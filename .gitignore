@@ -1,0 +1,23 @@
+# Binary
+pokemonprofessor
+pokemonprofessor-linux-amd64
+
+# Environment
+.env
+
+# SQLite database
+*.sqlite
+*.db
+
+# Build artifacts
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Go test cache
+*.test
+
+# Docker artifacts
+*.tar

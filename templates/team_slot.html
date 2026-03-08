@@ -1,0 +1,121 @@
+{{define "team_slot.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Edit Slot {{.SlotNum}}</h1>
+  <a href="/runs/{{.RunContext.ID}}/team" class="btn btn-sm">← Back to Team</a>
+
+  <form method="POST" action="/runs/{{.RunContext.ID}}/team" class="slot-edit-form">
+    <input type="hidden" name="slot" value="{{.SlotNum}}">
+
+    <div class="form-section">
+      <h2>Pokémon</h2>
+      <div class="form-row">
+        <label for="form_id">Species</label>
+        <select id="form_id" name="form_id">
+          <option value="">— Empty slot —</option>
+          {{range .LegalForms}}
+          <option value="{{.ID}}"
+            {{if and $.Slot.FormID (eq .ID (deref $.Slot.FormID))}}selected{{end}}>
+            {{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}} — {{.LocationName}}
+            {{if .BlockedByRule}} [{{.BlockedByRule}}]{{end}}
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "form_id"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "form_id"}}</span>{{end}}
+      </div>
+
+      {{if .Slot.FormID}}
+      <div class="form-row">
+        <label for="level">Level</label>
+        <input type="number" id="level" name="level" min="1" max="100"
+               value="{{if .Slot.Level}}{{deref .Slot.Level}}{{end}}">
+      </div>
+      {{end}}
+    </div>
+
+    {{if .Slot.FormID}}
+    <div class="form-section">
+      <h2>Moves</h2>
+      <div class="form-row">
+        <label>Move 1</label>
+        <select name="move_1">
+          <option value="">— No move —</option>
+          {{range .Slot.LegalMoves}}
+          <option value="{{.ID}}"
+            {{if and (index $.Slot.MoveIDs 0) (eq .ID (deref (index $.Slot.MoveIDs 0)))}}selected{{end}}>
+            {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "move_1"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "move_1"}}</span>{{end}}
+      </div>
+      <div class="form-row">
+        <label>Move 2</label>
+        <select name="move_2">
+          <option value="">— No move —</option>
+          {{range .Slot.LegalMoves}}
+          <option value="{{.ID}}"
+            {{if and (index $.Slot.MoveIDs 1) (eq .ID (deref (index $.Slot.MoveIDs 1)))}}selected{{end}}>
+            {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "move_2"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "move_2"}}</span>{{end}}
+      </div>
+      <div class="form-row">
+        <label>Move 3</label>
+        <select name="move_3">
+          <option value="">— No move —</option>
+          {{range .Slot.LegalMoves}}
+          <option value="{{.ID}}"
+            {{if and (index $.Slot.MoveIDs 2) (eq .ID (deref (index $.Slot.MoveIDs 2)))}}selected{{end}}>
+            {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "move_3"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "move_3"}}</span>{{end}}
+      </div>
+      <div class="form-row">
+        <label>Move 4</label>
+        <select name="move_4">
+          <option value="">— No move —</option>
+          {{range .Slot.LegalMoves}}
+          <option value="{{.ID}}"
+            {{if and (index $.Slot.MoveIDs 3) (eq .ID (deref (index $.Slot.MoveIDs 3)))}}selected{{end}}>
+            {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "move_4"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "move_4"}}</span>{{end}}
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Held Item</h2>
+      <div class="form-row">
+        <select name="held_item_id">
+          <option value="">— None —</option>
+          {{range .LegalItems}}
+          <option value="{{.ID}}"
+            {{if and $.Slot.HeldItemID (eq .ID (deref $.Slot.HeldItemID))}}selected{{end}}>
+            {{.DisplayName}} ({{.Source}})
+          </option>
+          {{end}}
+        </select>
+        {{if index .LegalityErrors "held_item_id"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "held_item_id"}}</span>{{end}}
+      </div>
+    </div>
+    {{end}}
+
+    <button type="submit" class="btn btn-primary">Save Slot {{.SlotNum}}</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}

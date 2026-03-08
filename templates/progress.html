@@ -1,0 +1,122 @@
+{{define "progress.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}{{if .LocationsSeeding}}<meta http-equiv="refresh" content="4">{{end}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Progress</h1>
+
+  <form method="POST" action="/runs/{{.RunContext.ID}}/progress">
+
+    <section class="form-section">
+      <h2>Badges</h2>
+      <div class="badge-stepper">
+        {{range $i, $filled := .RunContext.BadgePips}}
+        <span class="badge-pip {{if $filled}}badge-pip-filled{{else}}badge-pip-empty{{end}}" title="Badge {{add $i 1}}"></span>
+        {{end}}
+      </div>
+      <div class="form-row">
+        <label for="badge_count">Badge count</label>
+        <input type="number" id="badge_count" name="badge_count"
+               min="0" max="8" value="{{.BadgeCount}}" required>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Current Location</h2>
+      {{if .LocationsSeeding}}
+      <p class="banner-seeding">⏳ Fetching location data from PokéAPI — page will auto-refresh in a moment.</p>
+      {{end}}
+      <div class="form-row">
+        <label for="current_location_id">Location</label>
+        <select id="current_location_id" name="current_location_id">
+          <option value="">— not set —</option>
+          {{$cur := .CurrentLocID}}
+          {{$curRegion := ""}}
+          {{range .Locations}}
+            {{if ne .Region $curRegion}}
+              {{if ne $curRegion ""}}</optgroup>{{end}}
+              <optgroup label="{{.Region}}">
+              {{$curRegion = .Region}}
+            {{end}}
+            <option value="{{.ID}}"
+              {{if and $cur (eq .ID (deref $cur))}}selected{{end}}>
+              {{.Name}}
+            </option>
+          {{end}}
+          {{if ne $curRegion ""}}</optgroup>{{end}}
+        </select>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>Story Flags &amp; HMs</h2>
+      <div class="flag-grid">
+        {{range .AllFlags}}
+        <label class="flag-label">
+          <input type="checkbox" name="flags" value="{{.Key}}"
+            {{if index $.ActiveFlags .Key}}checked{{end}}>
+          <strong>{{.Label}}</strong>
+          <span class="flag-desc">{{.Description}}</span>
+        </label>
+        {{end}}
+      </div>
+    </section>
+
+    <button type="submit" class="btn btn-primary">Save Progress</button>
+  </form>
+
+  {{if or .LocationsSeeding (gt .HydrationTotal 0)}}
+  <section class="form-section hydration-section">
+    <h2>Data Hydration</h2>
+    <div class="hydration-bar-wrap">
+      <progress id="hydration-bar"
+                data-run-id="{{.RunContext.ID}}"
+                max="{{if gt .HydrationTotal 0}}{{.HydrationTotal}}{{else}}100{{end}}"
+                value="{{.HydrationSeeded}}"></progress>
+      <span id="hydration-label">
+        {{- if .LocationsSeeding -}}
+          ⏳ Fetching location list…
+        {{- else if ge .HydrationSeeded .HydrationTotal -}}
+          ✓ All encounter data ready
+        {{- else -}}
+          {{.HydrationSeeded}} / {{.HydrationTotal}} areas fetched
+        {{- end -}}
+      </span>
+    </div>
+    {{if or .LocationsSeeding (lt .HydrationSeeded .HydrationTotal)}}
+    <script>
+    (function() {
+      var bar = document.getElementById('hydration-bar');
+      var lbl = document.getElementById('hydration-label');
+      var runID = bar.dataset.runId;
+      function poll() {
+        fetch('/runs/' + runID + '/progress/hydration')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            bar.max = d.total;
+            bar.value = d.seeded;
+            var pct = d.total > 0 ? Math.round(d.seeded * 100 / d.total) : 0;
+            lbl.textContent = d.seeded + ' / ' + d.total + ' areas (' + pct + '%)';
+            if (d.total > 0 && d.seeded >= d.total) {
+              lbl.textContent = '✓ All encounter data ready';
+              bar.closest('.hydration-section').classList.add('hydration-done');
+            } else {
+              setTimeout(poll, 2000);
+            }
+          })
+          .catch(function() { setTimeout(poll, 5000); });
+      }
+      setTimeout(poll, 2000);
+    })();
+    </script>
+    {{end}}
+  </section>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}

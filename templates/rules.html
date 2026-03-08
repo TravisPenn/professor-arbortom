@@ -1,0 +1,52 @@
+{{define "rules.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Run Rules</h1>
+
+  <form method="POST" action="/runs/{{.RunContext.ID}}/rules">
+    <div class="rule-cards">
+      {{range .Rules}}
+      <div class="rule-card {{if .Enabled}}rule-enabled{{end}}">
+        <div class="rule-header">
+          <label class="rule-toggle">
+            <input type="checkbox" name="rule_{{.Key}}"
+                   {{if .Enabled}}checked{{end}}>
+            <strong>{{.Label}}</strong>
+          </label>
+        </div>
+        <p class="rule-desc">{{.Description}}</p>
+
+        {{if eq .Key "level_cap"}}
+        <div class="form-row">
+          <label for="rule_level_cap_params">Level cap override</label>
+          <input type="number" id="rule_level_cap_params" name="rule_level_cap_params"
+                 min="1" max="100"
+                 placeholder="Leave blank to use badge-based caps"
+                 value="{{if .Params}}{{index .Params "cap"}}{{end}}">
+        </div>
+        {{end}}
+
+        {{if eq .Key "theme_run"}}
+        <div class="form-row">
+          <label for="rule_theme_run_params">Theme description</label>
+          <input type="text" id="rule_theme_run_params" name="rule_theme_run_params"
+                 placeholder="e.g. fire types only"
+                 value="{{if .Params}}{{index .Params "description"}}{{end}}">
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Rules</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}
