@@ -1,0 +1,132 @@
+{{define "overview.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Run Overview</h1>
+
+  <div class="overview-grid">
+
+    <!-- ── Progress ──────────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Progress</h2>
+        <a href="/runs/{{.RunContext.ID}}/progress" class="btn btn-sm">Edit</a>
+      </div>
+      <dl class="overview-dl">
+        <dt>Badges</dt>
+        <dd>
+          {{range .RunContext.BadgePips}}
+            {{if .}}<span class="badge-pip badge-pip-filled"></span>{{else}}<span class="badge-pip badge-pip-empty"></span>{{end}}
+          {{end}}
+          ({{.RunContext.BadgeCount}}/8)
+        </dd>
+        <dt>Location</dt>
+        <dd>{{if .CurrentLocationName}}{{.CurrentLocationName}}{{else}}<span class="muted">not set</span>{{end}}</dd>
+        {{if .ActiveFlags}}
+        <dt>HMs / Flags</dt>
+        <dd>{{range .ActiveFlags}}<span class="badge-available flag-chip">{{.}}</span> {{end}}</dd>
+        {{end}}
+      </dl>
+    </div>
+
+    <!-- ── Team ──────────────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Team</h2>
+        <a href="/runs/{{.RunContext.ID}}/team" class="btn btn-sm">Edit</a>
+      </div>
+      <table class="overview-team-table">
+        <tbody>
+          {{range .TeamSlots}}
+          <tr>
+            <td class="slot-num">{{.Slot}}</td>
+            <td>
+              {{if .SpeciesName}}<strong>{{.SpeciesName}}</strong>{{else}}<span class="muted">—</span>{{end}}
+            </td>
+            <td>{{if .Level}}<span class="muted">Lv&nbsp;{{.Level}}</span>{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Box ───────────────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Box</h2>
+        <a href="/runs/{{.RunContext.ID}}/box" class="btn btn-sm">View</a>
+      </div>
+      <dl class="overview-dl">
+        <dt>In box (alive)</dt>
+        <dd>{{.BoxAlive}}</dd>
+        <dt>Fainted</dt>
+        <dd>{{if gt .BoxFainted 0}}<span class="badge-blocked">{{.BoxFainted}}</span>{{else}}0{{end}}</dd>
+      </dl>
+    </div>
+
+    <!-- ── Recent Routes ─────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Recent Encounters</h2>
+        <a href="/runs/{{.RunContext.ID}}/routes" class="btn btn-sm">Log</a>
+      </div>
+      {{if .RecentRoutes}}
+      <table class="overview-routes-table">
+        <tbody>
+          {{range .RecentRoutes}}
+          <tr>
+            <td>{{.LocationName}}</td>
+            <td><strong>{{.SpeciesName}}</strong></td>
+            <td>
+              {{if eq .Outcome "caught"}}<span class="badge-available">caught</span>
+              {{else if eq .Outcome "fainted"}}<span class="badge-blocked">fainted</span>
+              {{else}}<span class="badge-warning">{{.Outcome}}</span>{{end}}
+            </td>
+            <td>{{if .Level}}<span class="muted">Lv&nbsp;{{.Level}}</span>{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No encounters logged yet.</p>
+      {{end}}
+    </div>
+
+    <!-- ── Rules ─────────────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Rules</h2>
+        <a href="/runs/{{.RunContext.ID}}/rules" class="btn btn-sm">Edit</a>
+      </div>
+      {{if .ActiveRules}}
+      <div class="overview-rules">
+        {{range .ActiveRules}}<span class="badge-rule">{{.}}</span>{{end}}
+      </div>
+      {{else}}
+      <p class="muted">No rules enabled.</p>
+      {{end}}
+    </div>
+
+    <!-- ── Coach ─────────────────────────────────────────────────────── -->
+    <div class="overview-card">
+      <div class="overview-card-header">
+        <h2>Coach</h2>
+        <a href="/runs/{{.RunContext.ID}}/coach" class="btn btn-sm">Open</a>
+      </div>
+      {{if .ZeroClawAvailable}}
+      <p class="badge-available overview-coach-status">● AI available</p>
+      {{else}}
+      <p class="muted overview-coach-status">AI offline — coach unavailable</p>
+      {{end}}
+    </div>
+
+  </div>
+</main>
+</body>
+</html>
+{{end}}

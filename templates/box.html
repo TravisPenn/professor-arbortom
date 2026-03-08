@@ -1,0 +1,82 @@
+{{define "box.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Box</h1>
+
+  <div class="box-filter">
+    {{if .ShowFainted}}
+    <a href="?">Show alive only</a>
+    {{else}}
+    <a href="?fainted=true">Show all (including fainted)</a>
+    {{end}}
+  </div>
+
+  {{if .Entries}}
+  <table class="box-table">
+    <thead>
+      <tr>
+        <th>Pokémon</th>
+        <th>Form</th>
+        <th>Level</th>
+        <th>Met At</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Entries}}
+      <tr class="{{if not .IsAlive}}row-fainted{{end}}">
+        <td>{{.SpeciesName}}</td>
+        <td>{{if ne .FormName "default"}}{{.FormName}}{{else}}—{{end}}</td>
+        <td>{{.Level}}</td>
+        <td>{{if .MetLocation}}{{.MetLocation}}{{else}}starter/gift{{end}}</td>
+        <td>
+          {{if .IsAlive}}
+          <span class="badge-available">Alive</span>
+          {{else}}
+          <span class="badge-blocked">Fainted</span>
+          {{end}}
+        </td>
+        <td>
+          {{if .IsAlive}}
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" style="display:inline">
+            <button type="submit" class="btn btn-sm btn-danger">Mark Fainted</button>
+          </form>
+          {{if .Evolutions}}
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" style="display:inline">
+            {{if eq (len .Evolutions) 1}}
+            <input type="hidden" name="to_form_id" value="{{(index .Evolutions 0).ToFormID}}">
+            <button type="submit" class="btn btn-sm">Evolve → {{(index .Evolutions 0).ToSpeciesName}}</button>
+            {{else}}
+            <select name="to_form_id" class="form-select-inline">
+              {{range .Evolutions}}
+              <option value="{{.ToFormID}}">{{.ToSpeciesName}}</option>
+              {{end}}
+            </select>
+            <button type="submit" class="btn btn-sm">Evolve</button>
+            {{end}}
+          </form>
+          {{end}}
+          {{else if not $.NuzlockeOn}}
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" style="display:inline">
+            <button type="submit" class="btn btn-sm">Revive</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-state">No Pokémon in box yet.</p>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}

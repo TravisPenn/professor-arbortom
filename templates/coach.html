@@ -1,0 +1,233 @@
+{{define "coach.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Professor's Coach</h1>
+
+  <div class="coach-layout">
+
+    <!-- Left: Candidate Set -->
+    <div class="coach-candidates">
+
+      <section>
+        <h2>Available Pokémon ({{len .Acquisitions}})</h2>
+        {{if .Acquisitions}}
+        <table class="candidate-table">
+          <thead><tr><th>Species</th><th>Location</th><th>Method</th><th>Levels</th><th></th></tr></thead>
+          <tbody>
+            {{range .Acquisitions}}
+            <tr class="{{if .BlockedByRule}}row-blocked{{end}}">
+              <td>{{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}}</td>
+              <td>{{.LocationName}}</td>
+              <td>{{.Method}}</td>
+              <td>{{.MinLevel}}–{{.MaxLevel}}</td>
+              <td>{{if .BlockedByRule}}<span class="badge-blocked">{{.BlockedByRule}}</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No Pokémon available — set your current location in Progress.</p>
+        {{end}}
+      </section>
+
+      {{if .Trades}}
+      <section>
+        <h2>Trades &amp; Game Corner ({{len .Trades}})</h2>
+        <table class="candidate-table">
+          <thead><tr><th>Get</th><th>Give / Cost</th><th>Note</th></tr></thead>
+          <tbody>
+            {{range .Trades}}
+            <tr>
+              <td>{{.ReceiveSpecies}}{{if .ReceiveNick}} <span class="muted">({{.ReceiveNick}})</span>{{end}}</td>
+              <td>
+                {{if eq .Method "game-corner"}}
+                  <span class="badge-warning">{{.PriceCoins}} coins</span>
+                {{else}}
+                  trade {{.GiveSpecies}}
+                {{end}}
+              </td>
+              <td class="muted">{{.Notes}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </section>
+      {{end}}
+
+      <section>
+        <h2>Your Party Moves</h2>
+        {{range .PartyMoves}}
+        <h3>Slot {{.Slot}} · {{.SpeciesName}}{{if .Level}} <span class="muted">(Lv {{.Level}})</span>{{end}}</h3>
+        {{if .Moves}}
+        <table class="candidate-table">
+          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th><th>Evo</th></tr></thead>
+          <tbody>
+            {{range .Moves}}
+            <tr{{if .EvoNote}} class="row-evo-note"{{end}}>
+              <td>{{.Name}}</td>
+              <td><span class="type-badge type-{{.TypeName}}">{{.TypeName}}</span></td>
+              <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}{{if .TMNumber}} (TM{{printf "%02d" .TMNumber}}){{end}}{{if .HMNumber}} (HM{{printf "%02d" .HMNumber}}){{end}}{{if .TutorLocation}} — {{.TutorLocation}}{{end}}</td>
+              <td class="muted">{{.EvoNote}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No moves for this slot.</p>
+        {{end}}
+        {{end}}
+        {{if not .PartyMoves}}<p class="muted">No Pokémon in party yet.</p>{{end}}
+      </section>
+
+      <section>
+        <h2>Legal Items ({{len .LegalItems}})</h2>
+        {{if .LegalItems}}
+        <table class="candidate-table">
+        <thead><tr><th>Item</th><th>Category</th><th>Source</th><th>Price</th></tr></thead>
+          <tbody>
+            {{range .LegalItems}}
+            <tr>
+              <td>{{.DisplayName}}</td>
+              <td>{{.Category}}</td>
+              <td><span class="badge-{{if eq .Source "owned"}}available{{else if eq .Source "shop"}}info{{else}}warning{{end}}">{{.Source}}</span></td>
+              <td>{{if .Price}}<span class="muted">&#x20B1;{{.Price}}</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No items available.</p>
+        {{end}}
+      </section>
+
+    </div><!-- /coach-candidates -->
+
+    <!-- Right: Team Insights + Ask the Professor -->
+    <div class="coach-panel">
+
+      {{if .TeamInsights}}
+      <section class="coach-insights">
+        <h2>Team Insights</h2>
+
+        {{/* Party members: types + ability */}}
+        <div class="insight-members">
+          {{range .TeamInsights.Members}}
+          <div class="insight-member">
+            <span class="insight-label">{{.SpeciesName}}</span>
+            {{range .Types}}<span class="type-badge type-{{.}}">{{.}}</span>{{end}}
+            {{if .Ability}}<span class="muted">· {{.Ability}}</span>{{end}}
+          </div>
+          {{end}}
+        </div>
+
+        {{if .TeamInsights.Weaknesses}}
+        <div class="insight-group">
+          <span class="insight-label">Weak to</span>
+          <div class="insight-chips">
+            {{range .TeamInsights.Weaknesses}}
+            <span class="type-badge type-{{.Type}} insight-chip-weak" title="{{len .WeakMembers}} member(s) hit for ×2">{{.Type}}</span>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+
+        {{if .TeamInsights.Resistances}}
+        <div class="insight-group">
+          <span class="insight-label">Resists</span>
+          <div class="insight-chips">
+            {{range .TeamInsights.Resistances}}<span class="type-badge type-{{.}}">{{.}}</span>{{end}}
+          </div>
+        </div>
+        {{end}}
+
+        {{if .TeamInsights.Immunities}}
+        <div class="insight-group">
+          <span class="insight-label">Immune</span>
+          <div class="insight-chips">
+            {{range .TeamInsights.Immunities}}<span class="type-badge type-{{.}}">{{.}}</span>{{end}}
+          </div>
+        </div>
+        {{end}}
+
+        {{if .TeamInsights.UncoveredTypes}}
+        <div class="insight-group">
+          <span class="insight-label insight-label-warn">Offence gaps</span>
+          <div class="insight-chips">
+            {{range .TeamInsights.UncoveredTypes}}<span class="type-badge type-{{.}}">{{.}}</span>{{end}}
+          </div>
+        </div>
+        {{end}}
+
+        {{if .TeamInsights.EvoSummaries}}
+        <div class="insight-group insight-group-evos">
+          <span class="insight-label">Evolutions</span>
+          {{range .TeamInsights.EvoSummaries}}
+          <div class="evo-summary-block">
+            <span class="evo-from">{{.SpeciesName}}</span>
+            {{range .Paths}}
+            <div class="evo-path{{if .FullyLegal}} evo-legal{{else}} evo-blocked{{end}}">
+              {{range .Steps}}→ {{.ToSpeciesName}} <span class="muted">({{.Trigger}}{{if .BlockedBy}} · <span class="badge-blocked">{{.BlockedBy}}</span>{{end}})</span>{{end}}
+              {{if not .FullyLegal}}{{if .BlockReason}} <span class="badge-blocked">{{.BlockReason}}</span>{{end}}{{end}}
+            </div>
+            {{end}}
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+
+      </section>
+      {{end}}
+
+      {{if .ZeroClawAvailable}}
+
+      <section class="coach-ask">
+        <h2>Ask the Professor</h2>
+        <form method="POST" action="/runs/{{.RunContext.ID}}/coach">
+          <div class="form-row">
+            <label for="question">Your question</label>
+            <textarea id="question" name="question" rows="4"
+                      placeholder="e.g. Should I use Arcanine or Charizard on my team?">{{.PlayerQuestion}}</textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Ask Professor</button>
+        </form>
+      </section>
+
+      {{if .CoachAnswer}}
+      <section class="coach-answer">
+        <h2>Professor's Answer</h2>
+        {{/* SEC-018: CoachAnswer.Text is LLM output — auto-escaped by html/template.
+             NEVER use safeHTML or template.HTML here. */}}
+        <div class="answer-text">{{.CoachAnswer.Text}}</div>
+        <p class="muted">Model: {{.CoachAnswer.Model}}
+          {{if .CoachAnswer.Truncated}} · <span class="badge-warning">truncated</span>{{end}}
+        </p>
+      </section>
+      {{end}}
+
+      {{else}}
+
+      <div class="coach-unavailable">
+        <h2>AI coaching unavailable</h2>
+        <p>
+          Configure <code>ZEROCLAW_GATEWAY</code> in <code>.env</code> and restart
+          the service to enable the Professor AI coach.
+        </p>
+        <p>
+          The legality data to the left is fully functional without the AI coach.
+        </p>
+      </div>
+
+      {{end}}
+    </div><!-- /coach-panel -->
+
+  </div><!-- /coach-layout -->
+</main>
+</body>
+</html>
+{{end}}
