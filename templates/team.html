@@ -1,0 +1,44 @@
+{{define "team.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Team</h1>
+  <table class="team-overview-table">
+    <thead>
+      <tr>
+        <th>Slot</th>
+        <th>Pokémon</th>
+        <th>Level</th>
+        <th>Moves</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Slots}}
+      <tr>
+        <td class="slot-num">{{.Slot}}</td>
+        <td>
+          {{if .FormID}}
+            <strong>{{.SpeciesName}}</strong>{{if and .FormName (ne .FormName "default")}} <span class="muted">({{.FormName}})</span>{{end}}
+          {{else}}
+            <span class="muted">—</span>
+          {{end}}
+        </td>
+        <td>{{if .Level}}Lv&nbsp;{{deref .Level}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="team-move-list">
+          {{range .MoveNames}}{{if .}}<span class="move-chip">{{.}}</span>{{end}}{{end}}
+        </td>
+        <td><a href="/runs/{{$.RunContext.ID}}/team/{{.Slot}}" class="btn btn-sm">Edit</a></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</main>
+</body>
+</html>
+{{end}}

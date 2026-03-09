@@ -1,0 +1,94 @@
+{{define "routes.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Route Log</h1>
+
+  {{if .DuplicateWarning}}
+  <div class="banner-warning">
+    ⚠ Nuzlocke: you already caught a Pokémon on
+    <strong>{{.DuplicateWarning.LocationName}}</strong>
+    (<em>{{.DuplicateWarning.PreviousCatch}}</em>).
+    Log anyway?
+  </div>
+  {{end}}
+
+  <form method="POST" action="/runs/{{.RunContext.ID}}/routes" class="log-form">
+    <div class="form-row">
+      <label for="location_id">Location</label>
+      <select id="location_id" name="location_id" required>
+        <option value="">— select —</option>
+        {{$cur := .FormLocationID}}
+        {{range .Locations}}
+        <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="form_id">Pokémon seen</label>
+      <input type="text" id="form_id" name="form_id" placeholder="e.g. pidgey"
+             value="{{.FormSpecies}}">
+    </div>
+
+    <div class="form-row">
+      <label for="outcome">Outcome</label>
+      <select id="outcome" name="outcome" required>
+        <option value="">— select —</option>
+        <option value="caught"  {{if eq .FormOutcome "caught"}}selected{{end}}>Caught</option>
+        <option value="fainted" {{if eq .FormOutcome "fainted"}}selected{{end}}>Fainted</option>
+        <option value="fled"    {{if eq .FormOutcome "fled"}}selected{{end}}>Fled</option>
+        <option value="skipped" {{if eq .FormOutcome "skipped"}}selected{{end}}>Skipped</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="level-row">
+      <label for="level">Level (if caught)</label>
+      <input type="number" id="level" name="level" min="1" max="100"
+             value="{{if .FormLevel}}{{.FormLevel}}{{end}}">
+    </div>
+
+    {{if .DuplicateWarning}}
+    <button type="submit" class="btn btn-warning">Log Anyway</button>
+    {{else}}
+    <button type="submit" class="btn btn-primary">Log Encounter</button>
+    {{end}}
+  </form>
+
+  {{if .Log}}
+  <table class="route-table">
+    <thead>
+      <tr>
+        <th>Location</th>
+        <th>Pokémon</th>
+        <th>Outcome</th>
+        <th>Level</th>
+        {{if .NuzlockeOn}}<th>Duplicate</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Log}}
+      <tr class="{{if .IsDuplicate}}row-duplicate{{end}}">
+        <td>{{.LocationName}}</td>
+        <td>{{.SpeciesName}}</td>
+        <td>{{.Outcome}}</td>
+        <td>{{if .Level}}{{.Level}}{{else}}—{{end}}</td>
+        {{if $.NuzlockeOn}}
+        <td>{{if .IsDuplicate}}<span class="badge-warning">Duplicate</span>{{end}}</td>
+        {{end}}
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-state">No encounters logged yet.</p>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}

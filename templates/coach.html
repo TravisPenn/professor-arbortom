@@ -1,0 +1,131 @@
+{{define "coach.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+  <h1>Professor's Coach</h1>
+
+  <div class="coach-layout">
+
+    <!-- Left: Candidate Set -->
+    <div class="coach-candidates">
+
+      <section>
+        <h2>Available Pokémon ({{len .Acquisitions}})</h2>
+        {{if .Acquisitions}}
+        <table class="candidate-table">
+          <thead><tr><th>Species</th><th>Location</th><th>Method</th><th>Levels</th><th></th></tr></thead>
+          <tbody>
+            {{range .Acquisitions}}
+            <tr class="{{if .BlockedByRule}}row-blocked{{end}}">
+              <td>{{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}}</td>
+              <td>{{.LocationName}}</td>
+              <td>{{.Method}}</td>
+              <td>{{.MinLevel}}–{{.MaxLevel}}</td>
+              <td>{{if .BlockedByRule}}<span class="badge-blocked">{{.BlockedByRule}}</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No Pokémon available — set your current location in Progress.</p>
+        {{end}}
+      </section>
+
+      <section>
+        <h2>Your Party Moves</h2>
+        {{range .PartyMoves}}
+        <h3>Slot {{.Slot}} · {{.SpeciesName}}</h3>
+        {{if .Moves}}
+        <table class="candidate-table">
+          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th></tr></thead>
+          <tbody>
+            {{range .Moves}}
+            <tr>
+              <td>{{.Name}}</td>
+              <td><span class="type-badge type-{{.TypeName}}">{{.TypeName}}</span></td>
+              <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No moves for this slot.</p>
+        {{end}}
+        {{end}}
+        {{if not .PartyMoves}}<p class="muted">No Pokémon in party yet.</p>{{end}}
+      </section>
+
+      <section>
+        <h2>Legal Items ({{len .LegalItems}})</h2>
+        {{if .LegalItems}}
+        <table class="candidate-table">
+          <thead><tr><th>Item</th><th>Category</th><th>Source</th></tr></thead>
+          <tbody>
+            {{range .LegalItems}}
+            <tr>
+              <td>{{.Name}}</td>
+              <td>{{.Category}}</td>
+              <td><span class="badge-{{if eq .Source "owned"}}available{{else}}warning{{end}}">{{.Source}}</span></td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <p class="muted">No items available.</p>
+        {{end}}
+      </section>
+
+    </div><!-- /coach-candidates -->
+
+    <!-- Right: Ask the Professor / Banner -->
+    <div class="coach-panel">
+      {{if .ZeroClawAvailable}}
+
+      <section class="coach-ask">
+        <h2>Ask the Professor</h2>
+        <form method="POST" action="/runs/{{.RunContext.ID}}/coach">
+          <div class="form-row">
+            <label for="question">Your question</label>
+            <textarea id="question" name="question" rows="4"
+                      placeholder="e.g. Should I use Arcanine or Charizard on my team?">{{.PlayerQuestion}}</textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Ask Professor</button>
+        </form>
+      </section>
+
+      {{if .CoachAnswer}}
+      <section class="coach-answer">
+        <h2>Professor's Answer</h2>
+        <div class="answer-text">{{.CoachAnswer.Text}}</div>
+        <p class="muted">Model: {{.CoachAnswer.Model}}
+          {{if .CoachAnswer.Truncated}} · <span class="badge-warning">truncated</span>{{end}}
+        </p>
+      </section>
+      {{end}}
+
+      {{else}}
+
+      <div class="coach-unavailable">
+        <h2>AI coaching unavailable</h2>
+        <p>
+          Configure <code>ZEROCLAW_GATEWAY</code> in <code>.env</code> and restart
+          the service to enable the Professor AI coach.
+        </p>
+        <p>
+          The legality data to the left is fully functional without the AI coach.
+        </p>
+      </div>
+
+      {{end}}
+    </div><!-- /coach-panel -->
+
+  </div><!-- /coach-layout -->
+</main>
+</body>
+</html>
+{{end}}

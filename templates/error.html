@@ -1,0 +1,21 @@
+{{define "error.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PokemonProfessor — Error</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="site-nav">
+  <a href="/runs">Runs</a>
+</nav>
+<main>
+  <h1>Something went wrong</h1>
+  <p class="error-message">{{.Message}}</p>
+  <a href="/runs" class="btn">Back to Runs</a>
+</main>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,130 @@
+{{define "runs.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "flash" .}}
+<main>
+  <h1>Your Runs</h1>
+
+  {{if .Runs}}
+  <table class="run-table">
+    <thead>
+      <tr>
+        <th>Run Name</th>
+        <th>User</th>
+        <th>Game</th>
+        <th>Badges</th>
+        <th>Rules</th>
+        <th>Last Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Runs}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.UserName}}</td>
+        <td>{{.VersionName}}</td>
+        <td>{{.BadgeCount}}/8</td>
+        <td>
+          {{range .ActiveRules}}<span class="badge-rule">{{.}}</span> {{end}}
+          {{if not .ActiveRules}}<span class="muted">none</span>{{end}}
+        </td>
+        <td>{{.UpdatedAt}}</td>
+        <td><a href="/runs/{{.ID}}/progress" class="btn btn-sm">Continue</a></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-state">No runs yet. Start one below.</p>
+  {{end}}
+
+  <section class="new-run-form">
+    <h2>Start a New Run</h2>
+    <form method="POST" action="/runs" id="new-run-form">
+      <div class="form-row">
+        <label for="user_name">Your name</label>
+        <input type="text" id="user_name" name="user_name" maxlength="50" required>
+      </div>
+      <div class="form-row">
+        <label for="run_name">Run name</label>
+        <input type="text" id="run_name" name="run_name" maxlength="100" required>
+      </div>
+      <div class="form-row">
+        <label for="version_id">Game version</label>
+        <select id="version_id" name="version_id" required>
+          <option value="">— select —</option>
+          {{range .Versions}}
+          <option value="{{.ID}}">{{.Name}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-row" id="starter-row" style="display:none">
+        <label>Starter Pokémon</label>
+        <div class="starter-picker" id="starter-picker"></div>
+        <div class="starter-error" id="starter-error">Please select a starter Pokémon.</div>
+      </div>
+      <button type="submit" class="btn btn-primary">Start Run</button>
+    </form>
+  </section>
+
+  <script>
+  (function() {
+    const STARTERS = {
+      {{- range $vid, $opts := .StartersByVersion}}
+      "{{$vid}}": [{{range $i, $s := $opts}}{{if $i}},{{end}}{"id":{{$s.FormID}},"name":"{{$s.SpeciesName}}"}{{end}}],
+      {{- end}}
+    };
+
+    const versionSelect = document.getElementById('version_id');
+    const starterRow    = document.getElementById('starter-row');
+    const starterPicker = document.getElementById('starter-picker');
+    const starterError  = document.getElementById('starter-error');
+
+    function renderStarters(versionId) {
+      const starters = STARTERS[String(versionId)] || [];
+      starterPicker.innerHTML = '';
+      starterError.style.display = 'none';
+      if (!starters.length) { starterRow.style.display = 'none'; return; }
+      starterRow.style.display = '';
+      starters.forEach(function(s) {
+        const label = document.createElement('label');
+        label.className = 'starter-card';
+        const radio = document.createElement('input');
+        radio.type  = 'radio';
+        radio.name  = 'starter_form_id';
+        radio.value = s.id;
+        radio.addEventListener('change', function() {
+          starterPicker.querySelectorAll('.starter-card').forEach(function(l) { l.classList.remove('selected'); });
+          label.classList.add('selected');
+          starterError.style.display = 'none';
+        });
+        label.appendChild(radio);
+        label.appendChild(document.createTextNode(' ' + s.name));
+        starterPicker.appendChild(label);
+      });
+    }
+
+    versionSelect.addEventListener('change', function(e) { renderStarters(e.target.value); });
+
+    document.getElementById('new-run-form').addEventListener('submit', function(e) {
+      if (starterRow.style.display !== 'none') {
+        const checked = starterPicker.querySelector('input[type=radio]:checked');
+        if (!checked) {
+          e.preventDefault();
+          starterError.style.display = '';
+        }
+      }
+    });
+
+    // Re-populate on page load (e.g. after a validation error re-render)
+    renderStarters(versionSelect.value);
+  })();
+  </script>
+</main>
+</body>
+</html>
+{{end}}

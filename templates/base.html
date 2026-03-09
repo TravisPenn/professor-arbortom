@@ -1,0 +1,53 @@
+{{/* base.html — defines shared partials used by all page templates */}}
+
+{{define "html-head"}}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PokemonProfessor — {{.PageTitle}}</title>
+  <link rel="stylesheet" href="/static/style.css">
+{{end}}
+
+{{define "nav"}}
+<nav class="site-nav">
+  <a href="/runs" class="{{if eq .ActiveNav "runs"}}nav-active{{end}}">Runs</a>
+  {{if .RunContext}}
+  <span class="nav-sep">|</span>
+  <span class="nav-run-name">{{.RunContext.Name}}</span>
+  <span class="nav-sep">·</span>
+  <a href="/runs/{{.RunContext.ID}}/progress" class="{{if eq .ActiveNav "progress"}}nav-active{{end}}">Progress</a>
+  <a href="/runs/{{.RunContext.ID}}/team"     class="{{if eq .ActiveNav "team"}}nav-active{{end}}">Team</a>
+  <a href="/runs/{{.RunContext.ID}}/box"      class="{{if eq .ActiveNav "box"}}nav-active{{end}}">Box</a>
+  <a href="/runs/{{.RunContext.ID}}/routes"   class="{{if eq .ActiveNav "routes"}}nav-active{{end}}">Routes</a>
+  <a href="/runs/{{.RunContext.ID}}/rules"    class="{{if eq .ActiveNav "rules"}}nav-active{{end}}">Rules</a>
+  <a href="/runs/{{.RunContext.ID}}/coach"    class="{{if eq .ActiveNav "coach"}}nav-active{{end}}">Coach</a>
+  {{end}}
+</nav>
+{{end}}
+
+{{define "run-banner"}}
+{{if .RunContext}}
+<div class="run-banner">
+  <strong>{{.RunContext.Name}}</strong>
+  <span>Version: {{.RunContext.VersionName}}</span>
+  <span>Badges:
+    {{range .RunContext.BadgePips}}
+      {{if .}}<span class="badge-pip badge-pip-filled"></span>{{else}}<span class="badge-pip badge-pip-empty"></span>{{end}}
+    {{end}}
+    ({{.RunContext.BadgeCount}}/8)
+  </span>
+  {{if .RunContext.ActiveRules}}
+  <span>Rules:
+    {{range .RunContext.ActiveRules}}
+    <span class="badge-rule">{{.}}</span>
+    {{end}}
+  </span>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "flash"}}
+{{if .Flash}}
+<div class="flash flash-{{.Flash.Type}}">{{.Flash.Message}}</div>
+{{end}}
+{{end}}
