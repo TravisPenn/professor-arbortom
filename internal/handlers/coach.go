@@ -16,7 +16,7 @@ func ShowCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 		run := c.MustGet("run").(models.Run)
 		page, err := buildCoachPage(c, db, run.ID, zc.IsAvailable())
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		c.HTML(http.StatusOK, "coach.html", page)
@@ -32,7 +32,7 @@ func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 		available := zc.IsAvailable()
 		page, err := buildCoachPage(c, db, run.ID, available)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		page.PlayerQuestion = question

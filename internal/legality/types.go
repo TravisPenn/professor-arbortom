@@ -52,6 +52,12 @@ type Warning struct {
 	Message string `json:"message"`
 }
 
+// blocked returns a pointer to the rule key string, for use in BlockedByRule fields.
+func blocked(rule string) *string {
+	s := rule
+	return &s
+}
+
 // RunState is a lightweight projection of the run's current status used
 // internally by legality functions to avoid repeated DB queries.
 type RunState struct {

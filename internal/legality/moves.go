@@ -31,7 +31,10 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 	}
 	defer rows.Close()
 
-	cap, _ := LevelCap(db, rs)
+	cap, err := LevelCap(db, rs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("legality: level cap for moves: %w", err)
+	}
 
 	var moves []Move
 	var warns []Warning
@@ -44,14 +47,12 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 
 		// Annotate level-up moves blocked by cap
 		if cap > 0 && mv.LearnMethod == "level-up" && mv.LevelLearned > cap {
-			rule := "level_cap"
-			mv.BlockedByRule = &rule
+			mv.BlockedByRule = blocked("level_cap")
 		}
 
 		// HM moves — check flag availability
-		if blocked := hmBlockedRule(rs, mv.Name); blocked != "" {
-			rule := blocked
-			mv.BlockedByRule = &rule
+		if b := hmBlockedRule(rs, mv.Name); b != "" {
+			mv.BlockedByRule = blocked(b)
 			warns = append(warns, Warning{
 				Code:    "hm_flag",
 				Message: fmt.Sprintf("%s requires HM flag not yet set", mv.Name),

@@ -20,19 +20,19 @@ func ListRuns(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		runs, err := loadRunSummaries(db)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
 		versions, err := loadVersionOptions(db)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
 		starters, err := loadStartersByVersion(db)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -110,13 +110,13 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Upsert user
 		if _, err := db.Exec(`INSERT OR IGNORE INTO user (name) VALUES (?)`, userName); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
 		var userID int
 		if err := db.QueryRow(`SELECT id FROM user WHERE name = ?`, userName).Scan(&userID); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -126,7 +126,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			userID, versionID, runName,
 		)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		runID64, _ := res.LastInsertId()
@@ -134,7 +134,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Insert run_progress
 		if _, err := db.Exec(`INSERT INTO run_progress (run_id) VALUES (?)`, runID); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -143,7 +143,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			INSERT INTO run_rule (run_id, rule_def_id, enabled)
 			SELECT ?, id, 0 FROM rule_def
 		`, runID); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -153,7 +153,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			 VALUES (?, ?, 5, 1, 1, 1, '[]')`,
 			runID, starterFormID,
 		); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -173,107 +173,4 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 func ShowRun(c *gin.Context) {
 	run := c.MustGet("run").(models.Run)
 	c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/progress")
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
-	rows, err := db.Query(`
-		SELECT
-			r.id, r.name, u.name AS user_name, gv.name AS version_name,
-			COALESCE(rp.badge_count, 0) AS badge_count,
-			COALESCE(rp.updated_at, r.created_at) AS updated_at
-		FROM run r
-		JOIN user u ON u.id = r.user_id
-		JOIN game_version gv ON gv.id = r.version_id
-		LEFT JOIN run_progress rp ON rp.run_id = r.id
-		ORDER BY updated_at DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var runs []RunSummary
-	for rows.Next() {
-		var rs RunSummary
-		if err := rows.Scan(&rs.ID, &rs.Name, &rs.UserName, &rs.VersionName, &rs.BadgeCount, &rs.UpdatedAt); err != nil {
-			return nil, err
-		}
-
-		// Load active rules for this run
-		ruleRows, err := db.Query(`
-			SELECT rd.key FROM run_rule rr
-			JOIN rule_def rd ON rd.id = rr.rule_def_id
-			WHERE rr.run_id = ? AND rr.enabled = 1
-		`, rs.ID)
-		if err == nil {
-			defer ruleRows.Close()
-			for ruleRows.Next() {
-				var key string
-				ruleRows.Scan(&key) //nolint:errcheck
-				rs.ActiveRules = append(rs.ActiveRules, key)
-			}
-		}
-
-		runs = append(runs, rs)
-	}
-	return runs, rows.Err()
-}
-
-func loadVersionOptions(db *sql.DB) ([]VersionOption, error) {
-	rows, err := db.Query(`SELECT id, name FROM game_version ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var opts []VersionOption
-	for rows.Next() {
-		var o VersionOption
-		if err := rows.Scan(&o.ID, &o.Name); err != nil {
-			return nil, err
-		}
-		o.Name = capitalizeVersion(o.Name)
-		opts = append(opts, o)
-	}
-	return opts, rows.Err()
-}
-
-func loadStartersByVersion(db *sql.DB) (map[int][]StarterOption, error) {
-	rows, err := db.Query(`
-		SELECT gs.version_id, gs.form_id, ps.name
-		FROM game_starter gs
-		JOIN pokemon_form pf ON pf.id = gs.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
-		ORDER BY gs.version_id, gs.priority
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make(map[int][]StarterOption)
-	for rows.Next() {
-		var versionID, formID int
-		var name string
-		if err := rows.Scan(&versionID, &formID, &name); err != nil {
-			return nil, err
-		}
-		result[versionID] = append(result[versionID], StarterOption{
-			FormID:      formID,
-			SpeciesName: capitalizeVersion(name),
-		})
-	}
-	return result, rows.Err()
-}
-
-func capitalizeVersion(name string) string {
-	words := strings.Split(name, "-")
-	for i, w := range words {
-		if len(w) > 0 {
-			words[i] = strings.ToUpper(w[:1]) + w[1:]
-		}
-	}
-	return strings.Join(words, " ")
 }

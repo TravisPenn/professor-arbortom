@@ -16,7 +16,7 @@ func ShowRules(db *sql.DB) gin.HandlerFunc {
 		run := c.MustGet("run").(models.Run)
 		page, err := buildRulesPage(c, db, run.ID)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		c.HTML(http.StatusOK, "rules.html", page)
@@ -33,7 +33,7 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 			`SELECT rd.id, rd.key FROM rule_def rd`,
 		)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		defer rows.Close()

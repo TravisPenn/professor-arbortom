@@ -19,7 +19,7 @@ func ShowTeam(db *sql.DB) gin.HandlerFunc {
 		run := c.MustGet("run").(models.Run)
 		page, err := buildTeamPage(c, db, run.ID)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		c.HTML(http.StatusOK, "team.html", page)
@@ -30,14 +30,17 @@ func ShowTeam(db *sql.DB) gin.HandlerFunc {
 func ShowTeamSlot(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
-		slot, err := strconv.Atoi(c.Param("slot"))
-		if err != nil || slot < 1 || slot > 6 {
+		slot, ok := mustParamInt(c, "slot")
+		if !ok {
+			return
+		}
+		if slot < 1 || slot > 6 {
 			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Slot must be 1–6"})
 			return
 		}
 		page, err := buildTeamSlotPage(c, db, run.ID, slot, nil)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		c.HTML(http.StatusOK, "team_slot.html", page)
@@ -49,7 +52,7 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 
-		slot, _ := strconv.Atoi(c.PostForm("slot"))
+		slot := formInt(c, "slot", 0)
 		if slot < 1 || slot > 6 {
 			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid slot"})
 			return
@@ -163,7 +166,7 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 			res, err2 := db.Exec(`INSERT INTO run_pokemon (run_id, form_id, level, is_alive, in_party, party_slot, moves_json, held_item_id) VALUES (?, ?, ?, 1, 1, ?, ?, ?)`,
 				run.ID, formID, level, slot, string(movesJSON), heldPtr)
 			if err2 != nil {
-				c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err2.Error()})
+				respondError(c, err2)
 				return
 			}
 			newID, _ := res.LastInsertId()
@@ -171,7 +174,7 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 		}
 		if _, err := db.Exec(`UPDATE run_pokemon SET in_party = 1, party_slot = ?, level = ?, moves_json = ?, held_item_id = ? WHERE id = ?`,
 			slot, level, string(movesJSON), heldPtr, pkmnID); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -186,12 +189,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
 
 		showFainted := c.Query("fainted") == "true"
-		nuzlockeOn := false
-		for _, r := range activeRules {
-			if r.Key == "nuzlocke" && r.Enabled {
-				nuzlockeOn = true
-			}
-		}
+		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
 		query := `
 			SELECT rp.id, rp.form_id, ps.name, pf.form_name, rp.level,
@@ -208,7 +206,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 
 		rows, err := db.Query(query, run.ID)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		defer rows.Close()
@@ -251,9 +249,8 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 func MarkFainted(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
-		entryID, err := strconv.Atoi(c.Param("entry_id"))
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid entry_id"})
+		entryID, ok := mustParamInt(c, "entry_id")
+		if !ok {
 			return
 		}
 		db.Exec(`UPDATE run_pokemon SET is_alive = 0 WHERE id = ? AND run_id = ?`, entryID, run.ID) //nolint:errcheck
@@ -268,16 +265,13 @@ func MarkRevived(db *sql.DB) gin.HandlerFunc {
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
 
 		// Revive is only allowed if Nuzlocke is disabled
-		for _, r := range activeRules {
-			if r.Key == "nuzlocke" && r.Enabled {
-				c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
-				return
-			}
+		if isRuleEnabled(activeRules, "nuzlocke") {
+			c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
+			return
 		}
 
-		entryID, err := strconv.Atoi(c.Param("entry_id"))
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid entry_id"})
+		entryID, ok := mustParamInt(c, "entry_id")
+		if !ok {
 			return
 		}
 		db.Exec(`UPDATE run_pokemon SET is_alive = 1 WHERE id = ? AND run_id = ?`, entryID, run.ID) //nolint:errcheck
@@ -290,13 +284,12 @@ func EvolveBox(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 
-		entryID, err := strconv.Atoi(c.Param("entry_id"))
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid entry_id"})
+		entryID, ok := mustParamInt(c, "entry_id")
+		if !ok {
 			return
 		}
-		toFormID, err := strconv.Atoi(c.PostForm("to_form_id"))
-		if err != nil || toFormID <= 0 {
+		toFormID := formInt(c, "to_form_id", 0)
+		if toFormID <= 0 {
 			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid to_form_id"})
 			return
 		}
@@ -311,7 +304,7 @@ func EvolveBox(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		// Verify the requested evolution is currently legal.
 		evos, err := legality.EvolutionOptions(db, run.ID, currentFormID)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 		legalEvo := false
@@ -328,7 +321,7 @@ func EvolveBox(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Apply evolution: update the single run_pokemon row in-place.
 		if _, err := db.Exec(`UPDATE run_pokemon SET form_id = ? WHERE id = ? AND run_id = ?`, toFormID, entryID, run.ID); err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 

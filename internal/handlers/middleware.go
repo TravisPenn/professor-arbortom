@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -136,28 +135,6 @@ func buildRunContext(c *gin.Context) *RunContext {
 		ActiveRules: enabledKeys,
 		BadgePips:   pips,
 	}
-}
-
-func respondNotFound(c *gin.Context) {
-	if expectsJSON(c) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
-	} else {
-		c.HTML(http.StatusNotFound, "error.html", gin.H{"Message": "Run not found"})
-	}
-	c.Abort()
-}
-
-func respondError(c *gin.Context, err error) {
-	if expectsJSON(c) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	} else {
-		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
-	}
-	c.Abort()
-}
-
-func expectsJSON(c *gin.Context) bool {
-	return c.GetHeader("Accept") == "application/json"
 }
 
 // ruleParams parses a rules params_json string into a map.

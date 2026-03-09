@@ -31,7 +31,10 @@ func EvolutionOptions(db *sql.DB, runID, formID int) ([]Evolution, error) {
 	}
 	defer rows.Close()
 
-	cap, _ := LevelCap(db, rs)
+	cap, err := LevelCap(db, rs)
+	if err != nil {
+		return nil, fmt.Errorf("legality: level cap for evolutions: %w", err)
+	}
 
 	var evos []Evolution
 	for rows.Next() {
@@ -49,8 +52,7 @@ func EvolutionOptions(db *sql.DB, runID, formID int) ([]Evolution, error) {
 
 		// no_trade_evolutions rule
 		if rs.ActiveRules["no_trade_evolutions"] && evo.Trigger == "trade" {
-			rule := "no_trade_evolutions"
-			evo.BlockedByRule = &rule
+			evo.BlockedByRule = blocked("no_trade_evolutions")
 		}
 
 		evos = append(evos, evo)

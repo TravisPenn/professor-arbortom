@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pennt/pokemonprofessor/internal/models"
@@ -15,22 +14,17 @@ func ShowRoutes(db *sql.DB) gin.HandlerFunc {
 		run := c.MustGet("run").(models.Run)
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
 
-		nuzlockeOn := false
-		for _, r := range activeRules {
-			if r.Key == "nuzlocke" && r.Enabled {
-				nuzlockeOn = true
-			}
-		}
+		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
 		log, err := loadRouteLog(db, run.ID, nuzlockeOn)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
 		locations, err := loadLocations(db, run.VersionID)
 		if err != nil {
-			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": err.Error()})
+			respondError(c, err)
 			return
 		}
 
@@ -50,20 +44,12 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 		run := c.MustGet("run").(models.Run)
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
 
-		nuzlockeOn := false
-		for _, r := range activeRules {
-			if r.Key == "nuzlocke" && r.Enabled {
-				nuzlockeOn = true
-			}
-		}
+		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
-		locationIDStr := c.PostForm("location_id")
+		locationID := formInt(c, "location_id", 0)
 		speciesName := c.PostForm("form_id") // free text from form
 		outcome := c.PostForm("outcome")
-		levelStr := c.PostForm("level")
-
-		locationID, _ := strconv.Atoi(locationIDStr)
-		level, _ := strconv.Atoi(levelStr)
+		level := formInt(c, "level", 0)
 
 		// Resolve form ID from species name (best-effort)
 		var formID int
@@ -130,60 +116,4 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 
 		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/routes")
 	}
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-func loadRouteLog(db *sql.DB, runID int, nuzlockeOn bool) ([]RouteEntry, error) {
-	// Build a log from run_pokemon entries
-	rows, err := db.Query(`
-		SELECT
-			COALESCE(l.name, 'unknown') AS loc_name,
-			ps.name AS species_name,
-			'caught' AS outcome,
-			rp.level,
-			rp.met_location_id
-		FROM run_pokemon rp
-		JOIN pokemon_form pf ON pf.id = rp.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
-		LEFT JOIN location l ON l.id = rp.met_location_id
-		WHERE rp.run_id = ?
-		ORDER BY rp.id DESC
-	`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	// Build duplicate set if Nuzlocke
-	duplicateLocations := make(map[int]int) // locationID → count
-	if nuzlockeOn {
-		dupRows, err := db.Query(
-			`SELECT met_location_id FROM run_pokemon WHERE run_id = ? AND met_location_id IS NOT NULL`,
-			runID,
-		)
-		if err == nil {
-			defer dupRows.Close()
-			for dupRows.Next() {
-				var lid int
-				if dupRows.Scan(&lid) == nil {
-					duplicateLocations[lid]++
-				}
-			}
-		}
-	}
-
-	var log []RouteEntry
-	for rows.Next() {
-		var e RouteEntry
-		var locID *int
-		if err := rows.Scan(&e.LocationName, &e.SpeciesName, &e.Outcome, &e.Level, &locID); err != nil {
-			continue
-		}
-		if nuzlockeOn && locID != nil && duplicateLocations[*locID] > 1 {
-			e.IsDuplicate = true
-		}
-		log = append(log, e)
-	}
-	return log, rows.Err()
 }

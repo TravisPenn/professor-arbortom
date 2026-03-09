@@ -70,10 +70,9 @@ func ApplyRules(db *sql.DB, rs *RunState, acqs []Acquisition) ([]Acquisition, er
 		return acqs, err
 	}
 	if cap > 0 {
-		rule := "level_cap"
 		for i := range acqs {
 			if acqs[i].MinLevel > cap {
-				acqs[i].BlockedByRule = &rule
+				acqs[i].BlockedByRule = blocked("level_cap")
 			}
 		}
 	}
