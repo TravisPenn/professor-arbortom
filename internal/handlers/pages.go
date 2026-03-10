@@ -35,6 +35,7 @@ type Flash struct {
 type RunsPage struct {
 	BasePage
 	Runs              []RunSummary
+	ArchivedRuns      []RunSummary
 	Versions          []VersionOption
 	StartersByVersion map[int][]StarterOption
 }
@@ -53,6 +54,7 @@ type RunSummary struct {
 	BadgeCount  int
 	ActiveRules []string
 	UpdatedAt   string
+	Archived    bool
 }
 
 type VersionOption struct {

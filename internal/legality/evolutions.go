@@ -14,6 +14,11 @@ func EvolutionOptions(db *sql.DB, runID, formID int) ([]Evolution, error) {
 		return nil, err
 	}
 
+	cap, err := LevelCap(db, rs)
+	if err != nil {
+		return nil, fmt.Errorf("legality: level cap for evolutions: %w", err)
+	}
+
 	rows, err := db.Query(`
 		SELECT
 			ec.to_form_id,
@@ -30,11 +35,6 @@ func EvolutionOptions(db *sql.DB, runID, formID int) ([]Evolution, error) {
 		return nil, fmt.Errorf("legality: evolutions query: %w", err)
 	}
 	defer rows.Close()
-
-	cap, err := LevelCap(db, rs)
-	if err != nil {
-		return nil, fmt.Errorf("legality: level cap for evolutions: %w", err)
-	}
 
 	var evos []Evolution
 	for rows.Next() {

@@ -7,12 +7,15 @@ import (
 
 // ─── Run loaders ──────────────────────────────────────────────────────────────
 
+// loadRunSummaries returns all runs (active and archived) sorted by updated_at DESC.
+// The caller splits them by rs.Archived.
 func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 	rows, err := db.Query(`
 		SELECT
 			r.id, r.name, u.name AS user_name, gv.name AS version_name,
 			COALESCE(rp.badge_count, 0) AS badge_count,
-			COALESCE(rp.updated_at, r.created_at) AS updated_at
+			COALESCE(rp.updated_at, r.created_at) AS updated_at,
+			COALESCE(r.archived_at, '') AS archived_at
 		FROM run r
 		JOIN user u ON u.id = r.user_id
 		JOIN game_version gv ON gv.id = r.version_id
@@ -27,9 +30,11 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 	var runs []RunSummary
 	for rows.Next() {
 		var rs RunSummary
-		if err := rows.Scan(&rs.ID, &rs.Name, &rs.UserName, &rs.VersionName, &rs.BadgeCount, &rs.UpdatedAt); err != nil {
+		var archivedAt string
+		if err := rows.Scan(&rs.ID, &rs.Name, &rs.UserName, &rs.VersionName, &rs.BadgeCount, &rs.UpdatedAt, &archivedAt); err != nil {
 			return nil, err
 		}
+		rs.Archived = archivedAt != ""
 
 		// Load active rules for this run
 		ruleRows, err := db.Query(`

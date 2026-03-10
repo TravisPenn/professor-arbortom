@@ -7,7 +7,7 @@ import (
 	"github.com/pennt/pokemonprofessor/migrations"
 )
 
-const currentVersion = 3
+const currentVersion = 4
 
 // Migrate checks PRAGMA user_version and applies pending migrations.
 // Safe to call on every startup.
@@ -39,7 +39,14 @@ func Migrate(db *sql.DB) error {
 		if err := applyMigration(db, "003_merge_pokemon.sql"); err != nil {
 			return fmt.Errorf("db: migration 003: %w", err)
 		}
-		return setUserVersion(db, 3)
+		version = 3
+	}
+
+	if version == 3 {
+		if err := applyMigration(db, "004_archive_run.sql"); err != nil {
+			return fmt.Errorf("db: migration 004: %w", err)
+		}
+		return setUserVersion(db, 4)
 	}
 
 	return fmt.Errorf("db: unknown user_version %d", version)

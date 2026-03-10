@@ -18,7 +18,7 @@ func RedirectToRuns(c *gin.Context) {
 // ListRuns renders the runs dashboard.
 func ListRuns(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		runs, err := loadRunSummaries(db)
+		allRuns, err := loadRunSummaries(db)
 		if err != nil {
 			respondError(c, err)
 			return
@@ -36,12 +36,22 @@ func ListRuns(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		var active, archived []RunSummary
+		for _, r := range allRuns {
+			if r.Archived {
+				archived = append(archived, r)
+			} else {
+				active = append(active, r)
+			}
+		}
+
 		page := RunsPage{
 			BasePage: BasePage{
 				PageTitle: "Your Runs",
 				ActiveNav: "runs",
 			},
-			Runs:              runs,
+			Runs:              active,
+			ArchivedRuns:      archived,
 			Versions:          versions,
 			StartersByVersion: starters,
 		}
@@ -173,4 +183,32 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 func ShowRun(c *gin.Context) {
 	run := c.MustGet("run").(models.Run)
 	c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/progress")
+}
+
+// ArchiveRun handles POST /runs/:run_id/archive — soft-archives the run.
+func ArchiveRun(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		run := c.MustGet("run").(models.Run)
+		if _, err := db.Exec(
+			`UPDATE run SET archived_at = datetime('now') WHERE id = ?`, run.ID,
+		); err != nil {
+			respondError(c, err)
+			return
+		}
+		c.Redirect(http.StatusFound, "/runs")
+	}
+}
+
+// UnarchiveRun handles POST /runs/:run_id/unarchive — restores an archived run.
+func UnarchiveRun(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		run := c.MustGet("run").(models.Run)
+		if _, err := db.Exec(
+			`UPDATE run SET archived_at = NULL WHERE id = ?`, run.ID,
+		); err != nil {
+			respondError(c, err)
+			return
+		}
+		c.Redirect(http.StatusFound, "/runs")
+	}
 }

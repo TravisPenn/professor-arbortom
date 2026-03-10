@@ -13,6 +13,11 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 		return nil, nil, err
 	}
 
+	cap, err := LevelCap(db, rs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("legality: level cap for moves: %w", err)
+	}
+
 	rows, err := db.Query(`
 		SELECT
 			m.id,
@@ -30,11 +35,6 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 		return nil, nil, fmt.Errorf("legality: moves query: %w", err)
 	}
 	defer rows.Close()
-
-	cap, err := LevelCap(db, rs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("legality: level cap for moves: %w", err)
-	}
 
 	var moves []Move
 	var warns []Warning

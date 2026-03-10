@@ -191,6 +191,22 @@ main {
 
 .run-table { margin-bottom: 2rem; }
 .run-table td:last-child { white-space: nowrap; }
+.run-actions { display: flex; gap: 0.35rem; align-items: center; }
+
+.run-archived td { color: #888; }
+
+.archived-runs {
+  margin-bottom: 1.5rem;
+}
+.archived-runs > summary {
+  cursor: pointer;
+  color: #666;
+  font-size: 0.9rem;
+  padding: 0.3rem 0;
+  user-select: none;
+}
+.archived-runs > summary:hover { color: #333; }
+.run-table-archived { margin-top: 0.5rem; }
 .empty-state { color: #888; font-style: italic; }
 
 .new-run-form {
