@@ -104,7 +104,7 @@
           {{range .LegalItems}}
           <option value="{{.ID}}"
             {{if and $.Slot.HeldItemID (eq .ID (deref $.Slot.HeldItemID))}}selected{{end}}>
-            {{.Name}} ({{.Source}})
+            {{.DisplayName}} ({{.Source}})
           </option>
           {{end}}
         </select>

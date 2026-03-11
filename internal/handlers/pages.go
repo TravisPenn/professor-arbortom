@@ -120,18 +120,24 @@ type FormOption struct {
 }
 
 type MoveOption struct {
-	ID          int
-	Name        string
-	TypeName    string
-	LearnMethod string
-	Level       int
+	ID            int
+	Name          string
+	TypeName      string
+	LearnMethod   string
+	Level         int
+	EvoNote       string
+	TMNumber      int
+	HMNumber      int
+	TutorLocation string
 }
 
 type ItemOption struct {
-	ID       int
-	Name     string
-	Category string
-	Source   string
+	ID          int
+	Name        string
+	DisplayName string // formatted for display; same as Name except TMs → "TM24"
+	Category    string
+	Source      string
+	Price       int
 }
 
 // TeamSlotPage is used by the per-slot team edit page (/runs/:id/team/:slot).
@@ -239,14 +245,26 @@ type CoachPage struct {
 	BasePage
 	ZeroClawAvailable bool
 	Acquisitions      []legality.Acquisition
+	Trades            []TradeOption
 	PartyMoves        []PartyMoveSummary
 	LegalItems        []ItemOption
 	CoachAnswer       *CoachAnswer
 	PlayerQuestion    string
 }
 
+// TradeOption is an NPC trade or Game Corner entry at the current location.
+type TradeOption struct {
+	Method         string // "trade" | "game-corner"
+	GiveSpecies    string // empty for game-corner
+	ReceiveSpecies string
+	ReceiveNick    string
+	PriceCoins     int
+	Notes          string
+}
+
 type PartyMoveSummary struct {
 	Slot        int
+	Level       int
 	SpeciesName string
 	Moves       []MoveOption
 }

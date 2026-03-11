@@ -36,19 +36,44 @@
         {{end}}
       </section>
 
+      {{if .Trades}}
+      <section>
+        <h2>Trades &amp; Game Corner ({{len .Trades}})</h2>
+        <table class="candidate-table">
+          <thead><tr><th>Get</th><th>Give / Cost</th><th>Note</th></tr></thead>
+          <tbody>
+            {{range .Trades}}
+            <tr>
+              <td>{{.ReceiveSpecies}}{{if .ReceiveNick}} <span class="muted">({{.ReceiveNick}})</span>{{end}}</td>
+              <td>
+                {{if eq .Method "game-corner"}}
+                  <span class="badge-warning">{{.PriceCoins}} coins</span>
+                {{else}}
+                  trade {{.GiveSpecies}}
+                {{end}}
+              </td>
+              <td class="muted">{{.Notes}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </section>
+      {{end}}
+
       <section>
         <h2>Your Party Moves</h2>
         {{range .PartyMoves}}
-        <h3>Slot {{.Slot}} · {{.SpeciesName}}</h3>
+        <h3>Slot {{.Slot}} · {{.SpeciesName}}{{if .Level}} <span class="muted">(Lv {{.Level}})</span>{{end}}</h3>
         {{if .Moves}}
         <table class="candidate-table">
-          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th></tr></thead>
+          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th><th>Evo</th></tr></thead>
           <tbody>
             {{range .Moves}}
-            <tr>
+            <tr{{if .EvoNote}} class="row-evo-note"{{end}}>
               <td>{{.Name}}</td>
               <td><span class="type-badge type-{{.TypeName}}">{{.TypeName}}</span></td>
-              <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}</td>
+              <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}{{if .TMNumber}} (TM{{printf "%02d" .TMNumber}}){{end}}{{if .HMNumber}} (HM{{printf "%02d" .HMNumber}}){{end}}{{if .TutorLocation}} — {{.TutorLocation}}{{end}}</td>
+              <td class="muted">{{.EvoNote}}</td>
             </tr>
             {{end}}
           </tbody>
@@ -64,13 +89,14 @@
         <h2>Legal Items ({{len .LegalItems}})</h2>
         {{if .LegalItems}}
         <table class="candidate-table">
-          <thead><tr><th>Item</th><th>Category</th><th>Source</th></tr></thead>
+        <thead><tr><th>Item</th><th>Category</th><th>Source</th><th>Price</th></tr></thead>
           <tbody>
             {{range .LegalItems}}
             <tr>
-              <td>{{.Name}}</td>
+              <td>{{.DisplayName}}</td>
               <td>{{.Category}}</td>
-              <td><span class="badge-{{if eq .Source "owned"}}available{{else}}warning{{end}}">{{.Source}}</span></td>
+              <td><span class="badge-{{if eq .Source "owned"}}available{{else if eq .Source "shop"}}info{{else}}warning{{end}}">{{.Source}}</span></td>
+              <td>{{if .Price}}<span class="muted">&#x20B1;{{.Price}}</span>{{end}}</td>
             </tr>
             {{end}}
           </tbody>

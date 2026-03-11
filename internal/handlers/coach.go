@@ -79,18 +79,38 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 		return CoachPage{}, err
 	}
 
-	items, err := legality.LegalItems(db, runID)
+	trades, err := legality.LegalTrades(db, runID)
+	if err != nil {
+		return CoachPage{}, err
+	}
+	var tradeOptions []TradeOption
+	for _, t := range trades {
+		tradeOptions = append(tradeOptions, TradeOption{
+			Method:         t.Method,
+			GiveSpecies:    t.GiveSpecies,
+			ReceiveSpecies: t.ReceiveSpecies,
+			ReceiveNick:    t.ReceiveNick,
+			PriceCoins:     t.PriceCoins,
+			Notes:          t.Notes,
+		})
+	}
+
+	ownedItems, err := legality.LegalItems(db, runID)
+	if err != nil {
+		return CoachPage{}, err
+	}
+	shopItems, err := legality.ShopItems(db, runID)
 	if err != nil {
 		return CoachPage{}, err
 	}
 	var itemOptions []ItemOption
-	for _, it := range items {
+	for _, it := range append(ownedItems, shopItems...) {
 		itemOptions = append(itemOptions, itemToOption(it))
 	}
 
-	// Summarize party moves
+	// Summarize party moves — select level as well.
 	rows, err := db.Query(
-		`SELECT party_slot, form_id FROM run_pokemon WHERE run_id = ? AND in_party = 1 ORDER BY party_slot`,
+		`SELECT party_slot, form_id, level FROM run_pokemon WHERE run_id = ? AND in_party = 1 ORDER BY party_slot`,
 		runID,
 	)
 	if err != nil {
@@ -100,8 +120,8 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 
 	var party []PartyMoveSummary
 	for rows.Next() {
-		var slot, formID int
-		if err := rows.Scan(&slot, &formID); err != nil {
+		var slot, formID, level int
+		if err := rows.Scan(&slot, &formID, &level); err != nil {
 			continue
 		}
 
@@ -112,7 +132,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 			WHERE pf.id = ?
 		`, formID).Scan(&speciesName) //nolint:errcheck
 
-		mvs, _, _ := legality.LegalMoves(db, runID, formID)
+		mvs, _ := legality.CoachMoves(db, runID, formID, level)
 		var moveOpts []MoveOption
 		for _, mv := range mvs {
 			moveOpts = append(moveOpts, moveToOption(mv))
@@ -120,6 +140,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 
 		party = append(party, PartyMoveSummary{
 			Slot:        slot,
+			Level:       level,
 			SpeciesName: speciesName,
 			Moves:       moveOpts,
 		})
@@ -133,6 +154,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 		},
 		ZeroClawAvailable: available,
 		Acquisitions:      acqs,
+		Trades:            tradeOptions,
 		PartyMoves:        party,
 		LegalItems:        itemOptions,
 	}, nil

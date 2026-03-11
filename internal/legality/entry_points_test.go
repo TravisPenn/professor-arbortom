@@ -318,3 +318,331 @@ func TestEvolutionOptions_LevelUpPossible(t *testing.T) {
 		t.Errorf("should not be blocked, got %q", *evos[0].BlockedByRule)
 	}
 }
+
+// ── LegalTrades ───────────────────────────────────────────────────────────────
+
+func setupTradesDB(t *testing.T, locID int) (*sql.DB, int) {
+	t.Helper()
+	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, locationID: &locID})
+	mustExec(t, db, `CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT, version_id INTEGER, region TEXT)`)
+	mustExec(t, db, `CREATE TABLE in_game_trade (
+		id INTEGER PRIMARY KEY, location_id INTEGER,
+		give_species TEXT, receive_species TEXT, receive_nick TEXT,
+		price_coins INTEGER, notes TEXT)`)
+	mustExec(t, db, `INSERT INTO location VALUES (?, 'Cerulean City', 10, 'kanto')`, locID)
+	return db, runID
+}
+
+func TestLegalTrades_NpcTrade(t *testing.T) {
+	db, runID := setupTradesDB(t, 20)
+	mustExec(t, db, `INSERT INTO in_game_trade VALUES (1,20,'poliwhirl','jynx','Lola',NULL,NULL)`)
+
+	trades, err := LegalTrades(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trades) != 1 {
+		t.Fatalf("expected 1 trade, got %d", len(trades))
+	}
+	tr := trades[0]
+	if tr.Method != "trade" {
+		t.Errorf("Method = %q, want trade", tr.Method)
+	}
+	if tr.GiveSpecies != "poliwhirl" {
+		t.Errorf("GiveSpecies = %q, want poliwhirl", tr.GiveSpecies)
+	}
+	if tr.ReceiveSpecies != "jynx" {
+		t.Errorf("ReceiveSpecies = %q, want jynx", tr.ReceiveSpecies)
+	}
+	if tr.ReceiveNick != "Lola" {
+		t.Errorf("ReceiveNick = %q, want Lola", tr.ReceiveNick)
+	}
+}
+
+func TestLegalTrades_GameCorner(t *testing.T) {
+	db, runID := setupTradesDB(t, 20)
+	// give_species IS NULL → game-corner entry
+	mustExec(t, db, `INSERT INTO in_game_trade VALUES (1,20,NULL,'dratini',NULL,2800,NULL)`)
+
+	trades, err := LegalTrades(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trades) != 1 {
+		t.Fatalf("expected 1 trade, got %d", len(trades))
+	}
+	tr := trades[0]
+	if tr.Method != "game-corner" {
+		t.Errorf("Method = %q, want game-corner", tr.Method)
+	}
+	if tr.GiveSpecies != "" {
+		t.Errorf("GiveSpecies should be empty for game-corner, got %q", tr.GiveSpecies)
+	}
+	if tr.PriceCoins != 2800 {
+		t.Errorf("PriceCoins = %d, want 2800", tr.PriceCoins)
+	}
+}
+
+func TestLegalTrades_NoLocation(t *testing.T) {
+	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7}) // nil locationID
+	mustExec(t, db, `CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT, version_id INTEGER, region TEXT)`)
+	mustExec(t, db, `CREATE TABLE in_game_trade (
+		id INTEGER PRIMARY KEY, location_id INTEGER,
+		give_species TEXT, receive_species TEXT, receive_nick TEXT,
+		price_coins INTEGER, notes TEXT)`)
+
+	trades, err := LegalTrades(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trades) != 0 {
+		t.Errorf("expected no trades with no location set, got %d", len(trades))
+	}
+}
+
+func TestLegalTrades_WrongLocation(t *testing.T) {
+	db, runID := setupTradesDB(t, 20) // current location = 20
+	// Trade exists at a different location (99) — should not appear
+	mustExec(t, db, `INSERT INTO location VALUES (99, 'Lavender Town', 10, 'kanto')`)
+	mustExec(t, db, `INSERT INTO in_game_trade VALUES (1,99,'cubone','haunter',NULL,NULL,NULL)`)
+
+	trades, err := LegalTrades(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trades) != 0 {
+		t.Errorf("expected no trades at location 20, got %d", len(trades))
+	}
+}
+
+// ── ShopItems ─────────────────────────────────────────────────────────────────
+
+func setupShopDB(t *testing.T, locID int) (*sql.DB, int) {
+	t.Helper()
+	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, locationID: &locID})
+	mustExec(t, db, `CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT, category TEXT)`)
+	mustExec(t, db, `CREATE TABLE shop_item (
+		id INTEGER PRIMARY KEY, location_id INTEGER, version_id INTEGER,
+		item_name TEXT, price INTEGER, currency TEXT DEFAULT 'pokedollar',
+		UNIQUE(location_id, version_id, item_name))`)
+	mustExec(t, db, `CREATE TABLE tm_move (tm_number INTEGER PRIMARY KEY, move_name TEXT NOT NULL)`)
+	return db, runID
+}
+
+func TestShopItems_ReturnsShopSource(t *testing.T) {
+	db, runID := setupShopDB(t, 20)
+	mustExec(t, db, `INSERT INTO shop_item VALUES (1,20,10,'potion',300,'pokedollar')`)
+
+	items, err := ShopItems(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 shop item, got %d", len(items))
+	}
+	it := items[0]
+	if it.Source != "shop" {
+		t.Errorf("Source = %q, want shop", it.Source)
+	}
+	if it.Name != "potion" {
+		t.Errorf("Name = %q, want potion", it.Name)
+	}
+	if it.Price != 300 {
+		t.Errorf("Price = %d, want 300", it.Price)
+	}
+	if it.Currency != "pokedollar" {
+		t.Errorf("Currency = %q, want pokedollar", it.Currency)
+	}
+}
+
+func TestShopItems_JoinsItemTable(t *testing.T) {
+	db, runID := setupShopDB(t, 20)
+	mustExec(t, db, `INSERT INTO item VALUES (7,'great-ball','pokeball')`)
+	mustExec(t, db, `INSERT INTO shop_item VALUES (1,20,10,'great-ball',600,'pokedollar')`)
+
+	items, err := ShopItems(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ItemID != 7 {
+		t.Errorf("ItemID = %d, want 7 (from item table JOIN)", items[0].ItemID)
+	}
+	if items[0].Category != "pokeball" {
+		t.Errorf("Category = %q, want pokeball", items[0].Category)
+	}
+}
+
+func TestShopItems_NoLocation(t *testing.T) {
+	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7}) // nil locationID
+	mustExec(t, db, `CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT, category TEXT)`)
+	mustExec(t, db, `CREATE TABLE shop_item (
+		id INTEGER PRIMARY KEY, location_id INTEGER, version_id INTEGER,
+		item_name TEXT, price INTEGER, currency TEXT DEFAULT 'pokedollar',
+		UNIQUE(location_id, version_id, item_name))`)
+	mustExec(t, db, `CREATE TABLE tm_move (tm_number INTEGER PRIMARY KEY, move_name TEXT NOT NULL)`)
+
+	items, err := ShopItems(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected no shop items with no location, got %d", len(items))
+	}
+}
+
+func TestShopItems_WrongLocation(t *testing.T) {
+	db, runID := setupShopDB(t, 20)                                                     // current = 20
+	mustExec(t, db, `INSERT INTO shop_item VALUES (1,99,10,'potion',300,'pokedollar')`) // location 99
+
+	items, err := ShopItems(db, runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected no items at location 20, got %d", len(items))
+	}
+}
+
+// ── CoachMoves ────────────────────────────────────────────────────────────────
+
+func setupCoachMovesDB(t *testing.T) (*sql.DB, int) {
+	t.Helper()
+	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, badgeCount: 0})
+	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE learnset_entry (
+		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
+	mustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
+	mustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE evolution_condition (
+		id INTEGER PRIMARY KEY, from_form_id INTEGER, to_form_id INTEGER, trigger TEXT, conditions_json TEXT)`)
+	mustExec(t, db, `CREATE TABLE tm_move (tm_number INTEGER PRIMARY KEY, move_name TEXT NOT NULL)`)
+	mustExec(t, db, `CREATE TABLE hm_move (hm_number INTEGER PRIMARY KEY, move_name TEXT NOT NULL)`)
+	mustExec(t, db, `CREATE TABLE tutor_move (
+		id INTEGER PRIMARY KEY, version_group_id INTEGER NOT NULL,
+		move_name TEXT NOT NULL, location_name TEXT NOT NULL,
+		UNIQUE(version_group_id, move_name))`)
+	return db, runID
+}
+
+func TestCoachMoves_ExcludesEggMoves(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'dragon-rage','dragon')`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',5)`) // kept
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'egg',0)`)      // filtered
+
+	moves, err := CoachMoves(db, runID, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, mv := range moves {
+		if mv.LearnMethod == "egg" {
+			t.Errorf("CoachMoves should not include egg moves, found %q", mv.Name)
+		}
+	}
+	if len(moves) != 1 || moves[0].Name != "tackle" {
+		t.Errorf("expected only tackle, got %v", moves)
+	}
+}
+
+func TestCoachMoves_FiltersAlreadyLearnableLevelUp(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'growl','normal'),(3,'vine-whip','grass')`)
+	// currentLevel = 15; Lv1 and Lv10 should be filtered, Lv16 should appear
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'level-up',10)`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,3,7,'level-up',16)`)
+
+	moves, err := CoachMoves(db, runID, 5, 15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 1 {
+		t.Fatalf("expected 1 move (vine-whip at lv16), got %d: %v", len(moves), moves)
+	}
+	if moves[0].Name != "vine-whip" {
+		t.Errorf("expected vine-whip, got %q", moves[0].Name)
+	}
+}
+
+func TestCoachMoves_ZeroCurrentLevelSkipsFilter(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'growl','normal')`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'level-up',3)`)
+
+	// currentLevel=0 means "don't filter" — both moves should appear
+	moves, err := CoachMoves(db, runID, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 2 {
+		t.Errorf("expected 2 moves with currentLevel=0, got %d", len(moves))
+	}
+}
+
+func TestCoachMoves_EvoNoteAnnotated(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+
+	// bulbasaur (form 1) learns razor-leaf at lv20
+	// its evolution ivysaur (form 2) learns razor-leaf at lv15 (sooner)
+	mustExec(t, db, `INSERT INTO pokemon_species VALUES (1,'bulbasaur'),(2,'ivysaur')`)
+	mustExec(t, db, `INSERT INTO pokemon_form VALUES (1,1,'default'),(2,2,'default')`)
+	mustExec(t, db, `INSERT INTO evolution_condition VALUES (1,1,2,'level-up','{"min_level":16}')`)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'razor-leaf','grass')`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (1,1,7,'level-up',20)`) // bulbasaur lv20
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (2,1,7,'level-up',15)`) // ivysaur lv15 (sooner ↑)
+
+	// currentLevel = 5 so lv20 is not yet filtered
+	moves, err := CoachMoves(db, runID, 1, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 1 {
+		t.Fatalf("expected 1 move, got %d", len(moves))
+	}
+	if moves[0].EvoNote == "" {
+		t.Error("expected EvoNote to be set (ivysaur learns razor-leaf sooner)")
+	}
+}
+
+func TestCoachMoves_HMNumberAnnotated(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'surf','water')`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'machine',0)`)
+	mustExec(t, db, `INSERT INTO hm_move VALUES (3,'surf')`)
+
+	moves, err := CoachMoves(db, runID, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 1 {
+		t.Fatalf("expected 1 move, got %d", len(moves))
+	}
+	if moves[0].HMNumber != 3 {
+		t.Errorf("HMNumber = %d, want 3 (HM03 Surf)", moves[0].HMNumber)
+	}
+	if moves[0].TMNumber != 0 {
+		t.Errorf("TMNumber should be 0 for an HM move, got %d", moves[0].TMNumber)
+	}
+}
+
+func TestCoachMoves_TutorLocationAnnotated(t *testing.T) {
+	db, runID := setupCoachMovesDB(t)
+	mustExec(t, db, `INSERT INTO move VALUES (1,'dream-eater','psychic')`)
+	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'tutor',0)`)
+	mustExec(t, db, `INSERT INTO tutor_move VALUES (1,7,'dream-eater','Viridian City')`)
+
+	moves, err := CoachMoves(db, runID, 5, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 1 {
+		t.Fatalf("expected 1 move, got %d", len(moves))
+	}
+	if moves[0].TutorLocation != "Viridian City" {
+		t.Errorf("TutorLocation = %q, want \"Viridian City\"", moves[0].TutorLocation)
+	}
+}

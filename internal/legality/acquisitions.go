@@ -67,3 +67,54 @@ func LegalAcquisitions(db *sql.DB, runID int) ([]Acquisition, []Warning, error) 
 
 	return acqs, warns, nil
 }
+
+// LegalTrades returns in-game trades and Game Corner Pokémon available at the
+// run's current location. Returns an empty slice (not an error) when no
+// location is set or when the current location has no trade data.
+func LegalTrades(db *sql.DB, runID int) ([]Trade, error) {
+	rs, err := LoadRunState(db, runID)
+	if err != nil {
+		return nil, err
+	}
+	if rs.LocationID == nil {
+		return nil, nil
+	}
+
+	rows, err := db.Query(`
+		SELECT t.give_species, t.receive_species,
+		       COALESCE(t.receive_nick, ''),
+		       COALESCE(t.price_coins,  0),
+		       COALESCE(t.notes, ''),
+		       l.name
+		FROM in_game_trade t
+		JOIN location l ON l.id = t.location_id
+		WHERE t.location_id = ?
+		ORDER BY
+		    CASE WHEN t.give_species IS NULL THEN 1 ELSE 0 END,
+		    t.receive_species
+	`, *rs.LocationID)
+	if err != nil {
+		return nil, fmt.Errorf("legality: trades query: %w", err)
+	}
+	defer rows.Close()
+
+	var trades []Trade
+	for rows.Next() {
+		var giveSpec sql.NullString
+		var t Trade
+		if err := rows.Scan(
+			&giveSpec, &t.ReceiveSpecies, &t.ReceiveNick,
+			&t.PriceCoins, &t.Notes, &t.LocationName,
+		); err != nil {
+			return nil, err
+		}
+		if giveSpec.Valid {
+			t.GiveSpecies = giveSpec.String
+			t.Method = "trade"
+		} else {
+			t.Method = "game-corner"
+		}
+		trades = append(trades, t)
+	}
+	return trades, rows.Err()
+}

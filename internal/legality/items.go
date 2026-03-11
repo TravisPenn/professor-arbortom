@@ -69,3 +69,47 @@ func LegalItems(db *sql.DB, runID int) ([]Item, error) {
 
 	return items, nil
 }
+
+// ShopItems returns items for sale at the run's current location.
+// Uses the shop_item table which stores item names as TEXT, independent of
+// PokeAPI hydration. Returns an empty slice when no location is set or when
+// no shop data exists for the location.
+func ShopItems(db *sql.DB, runID int) ([]Item, error) {
+	rs, err := LoadRunState(db, runID)
+	if err != nil {
+		return nil, err
+	}
+	if rs.LocationID == nil {
+		return nil, nil
+	}
+
+	rows, err := db.Query(`
+		SELECT s.item_name, s.price, s.currency,
+		       COALESCE(i.id, 0)         AS item_id,
+		       COALESCE(i.category, '')  AS category,
+		       COALESCE(tm.move_name, '') AS move_name
+		FROM shop_item s
+		LEFT JOIN item i ON i.name = s.item_name
+		LEFT JOIN tm_move tm ON (
+		    s.item_name LIKE 'tm%'
+		    AND CAST(SUBSTR(s.item_name, 3) AS INTEGER) = tm.tm_number
+		)
+		WHERE s.location_id = ?
+		ORDER BY s.price, s.item_name
+	`, *rs.LocationID)
+	if err != nil {
+		return nil, fmt.Errorf("legality: shop items query: %w", err)
+	}
+	defer rows.Close()
+
+	var items []Item
+	for rows.Next() {
+		var it Item
+		if err := rows.Scan(&it.Name, &it.Price, &it.Currency, &it.ItemID, &it.Category, &it.MoveName); err != nil {
+			return nil, err
+		}
+		it.Source = "shop"
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
