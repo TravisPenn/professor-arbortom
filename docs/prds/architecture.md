@@ -1,8 +1,8 @@
 # PokemonProfessor — Architecture
 
 **Repo**: `github.com/<owner>/pokemonprofessor`
-**Status**: Specification (not yet deployed)
-**Updated**: March 8, 2026
+**Status**: Deployed (Gen 3 complete)
+**Updated**: March 11, 2026
 
 > This document is the authoritative architecture reference for the `pokemonprofessor` application.
 > Infrastructure deployment (LXC provisioning, Ansible playbooks, systemd unit) is managed in the
@@ -66,12 +66,14 @@ internal/
     migrate.go          ← check PRAGMA user_version, apply missing migrations, bump version
 
   pokeapi/
-    client.go           ← stdlib net/http wrapper; respects api_cache_log; Gen3 version
+    client.go           ← stdlib net/http wrapper; respects api_cache_log; Gen 3 version
                            group guard (rejects vg IDs outside {5,6,7})
     pokemon.go          ← EnsurePokemon(db, formID, versionGroupID)
     location.go         ← EnsureLocationEncounters(db, locationID, versionID)
     item.go             ← EnsureItem(db, itemID, versionID)
     evolution.go        ← EnsureEvolutionChain(db, formID)
+    region.go           ← EnsureRegionLocations(db, regionID); EnsureAllEncounters(db, versionID)
+                           RegionIDForVersionID(versionID) int
 
   legality/
     acquisitions.go     ← LegalAcquisitions(db, runID) ([]Acquisition, []Warning, error)
@@ -84,28 +86,44 @@ internal/
     types.go            ← Acquisition, Move, Item, Evolution, Warning structs
 
   handlers/
-    runs.go             ← GET /runs, POST /runs, GET /runs/:id
-    progress.go         ← GET|POST /runs/:id/progress
-    team.go             ← GET|POST /runs/:id/team, GET /runs/:id/box
+    runs.go             ← GET /runs, POST /runs, GET|POST /runs/:id/archive|unarchive
+    progress.go         ← GET|POST /runs/:id/progress; GET /runs/:id/progress/hydration
+    team.go             ← GET|POST /runs/:id/team; GET /runs/:id/team/:slot
+    pages.go            ← all page/struct definitions (BasePage, RunContext, etc.)
     routes.go           ← GET|POST /runs/:id/routes
     rules.go            ← GET|POST /runs/:id/rules
     coach.go            ← GET|POST /runs/:id/coach
     api.go              ← /api/legal/*, /health  (JSON)
     middleware.go       ← RunContextMiddleware
+    loaders.go          ← shared DB query helpers (loadLocations, loadFlags, etc.)
+    util.go             ← shared response helpers, formInt, itoa, etc.
+    converters.go       ← PokeAPI → model conversions
 
   services/
     zeroclaw.go         ← IsAvailable(), QueryCoach() — only file making outbound calls to LXC 130
 
 migrations/
-  001_initial.sql       ← full schema + all seed data
+  001_initial.sql       ← core schema (game data + run tracking tables)
+  002_starters.sql      ← game_starter table; Gen 3 starter species pre-seeded
+  003_merge_pokemon.sql ← run_party + run_box → unified run_pokemon table
+  004_archive_run.sql   ← run.archived_at column (soft-archive)
+  005_static_locations.sql ← negative-ID static town/city locations for Gen 3
+  006_coach_improvements.sql ← in_game_trade + shop_item tables; NPC trades + Game Corner data
+  007_tm_moves.sql      ← tm_move table; Gen 3 TM→move mapping
+  008_hm_tutor_moves.sql ← hm_move + tutor_move tables; HM list + tutor locations
 
 templates/              ← embedded via //go:embed
   base.html
-  runs.html, progress.html, team.html, box.html
+  runs.html, overview.html, progress.html
+  team.html, team_slot.html, box.html
   routes.html, rules.html, coach.html
 
 static/                 ← embedded via //go:embed
   style.css
+
+data/
+  data.go               ← embeds seeds.sql; exposes SeedsSQL []byte
+  seeds.sql             ← pre-built reference data applied on first startup
 
 docs/
   architecture.md       ← this file
@@ -133,7 +151,8 @@ Ansible via `pct push`. It receives its runtime environment through:
 | systemd | `ExecStart=/usr/local/bin/pokemonprofessor` | Binary invocation |
 
 The binary **must not** assume any filesystem path exists except those declared in `.env`. On
-first start it creates the SQLite DB file at `POKEMON_DB_PATH` and runs all pending migrations.
+first start it creates the SQLite DB file at `POKEMON_DB_PATH`, runs all pending migrations
+(currently 8), and applies `seeds.sql` reference data if the DB is freshly empty.
 
 **Binary build command** (run on Windows, output copied to Proxmox host):
 ```
@@ -185,7 +204,8 @@ that isn't in the cache. After initial population the system is fully offline.
 
 **Gen 3 scope enforcement**: `client.go` rejects requests for version group IDs outside `{5, 6, 7}`.
 This is a compile-time constant, not a runtime config. Expanding to Gen 4+ requires adding IDs to
-this set and no schema migration (all tables are version-group-keyed).
+this set; the schema is already generation-agnostic (all tables are version-group-keyed) so no
+migration is needed to add new generations.
 
 **Gen 3 version group IDs** (sourced from PokeAPI, immutable):
 
@@ -209,9 +229,10 @@ this set and no schema migration (all tables are version-group-keyed).
 | **`net/http` stdlib** | PokeAPI calls; no external HTTP client dependency |
 | **`github.com/joho/godotenv`** | `.env` loading; one small dep |
 | **Raw SQL, no ORM** | Schema is explicit in `schema.md`; legality queries are complex JOINs that belong in SQL not ORM wrappers |
-| **`aiosqlite` / async** | N/A — Go's stdlib `database/sql` with connection pool is synchronous and correct for this use case |
+| **`data/seeds.sql` embed** | Pre-built reference data applied on first startup so new installs work offline immediately |
+| **Unified `run_pokemon` table** | Replaces separate `run_party` + `run_box` (migration 003); single source of truth for every owned Pokémon with `in_party`/`party_slot` columns |
 
-**Total external dependencies**: `gin-gonic/gin`, `modernc.org/sqlite`, `joho/godotenv`, `httpx` for PokeAPI.
+**Total external runtime dependencies**: `gin-gonic/gin`, `modernc.org/sqlite`, `joho/godotenv`. PokeAPI calls use stdlib `net/http` — no extra HTTP client library needed.
 
 ---
 

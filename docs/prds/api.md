@@ -48,7 +48,7 @@ Loads from DB and stores in Gin context (`c.Set`):
 | `"run"` | `models.Run` | `id`, `name`, `version_id`, `user_id` |
 | `"progress"` | `models.RunProgress` | `badge_count`, `current_location_id` |
 | `"active_rules"` | `[]models.ActiveRule` | `key`, `enabled`, `params_json` |
-| `"version"` | `models.GameVersion` | `id`, `name`, `version_group_id` |
+| `"version"` | `models.GameVersion` | `id`, `name`, `version_group_id`, `generation_id` |
 
 If `run_id` not found: renders 404 page (HTML) or returns `{"error": "run not found"}` (JSON).
 
@@ -73,6 +73,9 @@ this data.
 | `GET` | `/runs` | `handlers.ListRuns` | HTML: `runs.html` |
 | `POST` | `/runs` | `handlers.CreateRun` | 302 → `/runs/:id/progress` on success; re-render on error |
 | `GET` | `/runs/:run_id` | `handlers.ShowRun` | 302 → `/runs/:run_id/progress` |
+| `GET` | `/runs/:run_id/overview` | `handlers.ShowOverview` | HTML: `overview.html` |
+| `POST` | `/runs/:run_id/archive` | `handlers.ArchiveRun` | 302 → `/runs` |
+| `POST` | `/runs/:run_id/unarchive` | `handlers.UnarchiveRun` | 302 → `/runs` |
 
 ### Progress
 
@@ -80,16 +83,19 @@ this data.
 |--------|------|---------|----------|
 | `GET` | `/runs/:run_id/progress` | `handlers.ShowProgress` | HTML: `progress.html` |
 | `POST` | `/runs/:run_id/progress` | `handlers.UpdateProgress` | 302 → same GET on success |
+| `GET` | `/runs/:run_id/progress/hydration` | `handlers.HydrationStatus` | JSON: `{total, seeded}` |
 
 ### Team & Box
 
 | Method | Path | Handler | Response |
 |--------|------|---------|----------|
-| `GET` | `/runs/:run_id/team` | `handlers.ShowTeam` | HTML: `team.html` |
+| `GET` | `/runs/:run_id/team` | `handlers.ShowTeam` | HTML: `team.html` (compact overview) |
+| `GET` | `/runs/:run_id/team/:slot` | `handlers.ShowTeamSlot` | HTML: `team_slot.html` (per-slot edit form) |
 | `POST` | `/runs/:run_id/team` | `handlers.UpdateTeam` | 302 → GET on success; re-render on legality violation |
 | `GET` | `/runs/:run_id/box` | `handlers.ShowBox` | HTML: `box.html` |
-| `POST` | `/runs/:run_id/box/:entry_id/faint` | `handlers.MarkFainted` | 302 → `/runs/:run_id/box` |
-| `POST` | `/runs/:run_id/box/:entry_id/revive` | `handlers.MarkRevived` | 302 → `/runs/:run_id/box` (only if Nuzlocke rule disabled) |
+| `POST` | `/runs/:run_id/box/:entry_id/faint` | `handlers.MarkFainted` | 302 → `/runs/:id/box` |
+| `POST` | `/runs/:run_id/box/:entry_id/revive` | `handlers.MarkRevived` | 302 → `/runs/:id/box` (only if Nuzlocke rule disabled) |
+| `POST` | `/runs/:run_id/box/:entry_id/evolve` | `handlers.EvolveBox` | 302 → `/runs/:id/box` on success |
 
 ### Routes Log
 
@@ -134,6 +140,7 @@ Form fields:
 | `user_name` | string | required, 1–50 chars; creates user if not exists |
 | `run_name` | string | required, 1–100 chars |
 | `version_id` | integer | required; must exist in `game_version` |
+| `starter_form_id` | integer | optional; if set, adds the starter to `run_pokemon` with `in_party=1, party_slot=1` |
 
 On success: inserts `user` (or finds existing), inserts `run`, inserts `run_progress` with defaults,
 inserts one `run_rule` row per `rule_def` (all `enabled=0`). Redirects to progress page.
@@ -185,7 +192,7 @@ Form fields:
 | `level` | integer | required if `outcome = caught` |
 
 **Nuzlocke duplicate check**: if `nuzlocke` rule enabled and `outcome = caught` and
-`location_id` already appears in `run_box.met_location_id` for this run: re-render with yellow
+`location_id` already appears in `run_pokemon.met_location_id` for this run: re-render with yellow
 warning badge `"Nuzlocke: you already caught a Pokémon on this route"`. Does **not** block the
 submission — player may have a rule variant that allows it.
 
@@ -342,32 +349,38 @@ held items, story flags). `false` with reason annotation if not yet satisfiable.
 
 ```go
 r := gin.Default()
-r.SetHTMLTemplate(templates)  // from go:embed
-r.Static("/static", ...)      // from go:embed
+r.SetHTMLTemplate(templates)  // parsed from go:embed with custom FuncMap
+r.StaticFS("/static", http.FS(pokestatic.FS))
 
 r.GET("/", handlers.RedirectToRuns)
-r.GET("/health", handlers.Health(db, zc))
+r.GET("/health", handlers.Health(db, zc, Version))
 
 runs := r.Group("/runs")
 {
     runs.GET("", handlers.ListRuns(db))
-    runs.POST("", handlers.CreateRun(db))
+    runs.POST("", handlers.CreateRun(db, pokeClient))
 
-    run := runs.Group("/:run_id", middleware.RunContext(db))
+    run := runs.Group("/:run_id", handlers.RunContextMiddleware(db))
     {
         run.GET("", handlers.ShowRun)
-        run.GET("/progress", handlers.ShowProgress(db))
-        run.POST("/progress", handlers.UpdateProgress(db, pokeapiClient))
+        run.GET("/overview", handlers.ShowOverview(db, zc))
+        run.POST("/archive", handlers.ArchiveRun(db))
+        run.POST("/unarchive", handlers.UnarchiveRun(db))
+        run.GET("/progress", handlers.ShowProgress(db, pokeClient))
+        run.POST("/progress", handlers.UpdateProgress(db, pokeClient))
+        run.GET("/progress/hydration", handlers.HydrationStatus(db))
         run.GET("/team", handlers.ShowTeam(db))
+        run.GET("/team/:slot", handlers.ShowTeamSlot(db))
         run.POST("/team", handlers.UpdateTeam(db))
         run.GET("/box", handlers.ShowBox(db))
         run.POST("/box/:entry_id/faint", handlers.MarkFainted(db))
         run.POST("/box/:entry_id/revive", handlers.MarkRevived(db))
+        run.POST("/box/:entry_id/evolve", handlers.EvolveBox(db, pokeClient))
         run.GET("/routes", handlers.ShowRoutes(db))
         run.POST("/routes", handlers.LogEncounter(db))
         run.GET("/rules", handlers.ShowRules(db))
         run.POST("/rules", handlers.UpdateRules(db))
-        run.GET("/coach", handlers.ShowCoach(db))
+        run.GET("/coach", handlers.ShowCoach(db, zc))
         run.POST("/coach", handlers.QueryCoach(db, zc))
     }
 }

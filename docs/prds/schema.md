@@ -1,7 +1,8 @@
 # PokemonProfessor — Database Schema
 
-**File**: `migrations/001_initial.sql`
-**Applied by**: `internal/db/migrate.go` on first start if `PRAGMA user_version = 0`
+**File**: `migrations/001_initial.sql` – `008_hm_tutor_moves.sql`
+**Applied by**: `internal/db/migrate.go` on startup (sequential, version-gated)
+**Current version**: 8 (`PRAGMA user_version = 8`)
 
 Cross-reference: [architecture.md](architecture.md) for module structure,
 [api.md](api.md) for query consumers.
@@ -16,11 +17,17 @@ Cross-reference: [architecture.md](architecture.md) for module structure,
 2. Execute `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode = WAL` and
    `PRAGMA busy_timeout = 5000` on every connection open (not just migration)
 3. Read `PRAGMA user_version`
-4. If `user_version = 0`: execute `migrations/001_initial.sql`, then `PRAGMA user_version = 1`
-5. If `user_version = 1`: no-op — already current
+4. Apply each numbered migration in order, bumping `user_version` after each:
+   - `001_initial.sql` (0 → 1) — core schema + game version / rule seeds
+   - `002_starters.sql` (1 → 2) — `game_starter` table; Gen 3 starter species
+   - `003_merge_pokemon.sql` (2 → 3) — `run_pokemon` replaces `run_party` + `run_box`
+   - `004_archive_run.sql` (3 → 4) — `run.archived_at` soft-archive column
+   - `005_static_locations.sql` (4 → 5) — static town/city rows (negative IDs)
+   - `006_coach_improvements.sql` (5 → 6) — `in_game_trade` + `shop_item` tables
+   - `007_tm_moves.sql` (6 → 7) — `tm_move` table
+   - `008_hm_tutor_moves.sql` (7 → 8) — `hm_move` + `tutor_move` tables
+5. If `user_version >= 8`: no-op — already up-to-date
 6. Future migrations follow the same pattern, incrementing the version number
-
-The migration SQL file is embedded via `//go:embed migrations/001_initial.sql` in `migrate.go`.
 
 ---
 
@@ -153,7 +160,8 @@ CREATE TABLE IF NOT EXISTS run (
     user_id         INTEGER NOT NULL REFERENCES user(id),
     version_id      INTEGER NOT NULL REFERENCES game_version(id),
     name            TEXT NOT NULL,          -- e.g. 'FireRed Nuzlocke', 'Emerald Casual'
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    archived_at     TEXT DEFAULT NULL       -- NULL = active; timestamp = soft-archived (migration 004)
 );
 
 -- Current progress within a run
@@ -174,26 +182,23 @@ CREATE TABLE IF NOT EXISTS run_flag (
     -- 'hm.surf_obtained' gates surf encounters; 'hm.cut_obtained' gates cut-locked areas
 );
 
--- Active party (up to 6 slots)
-CREATE TABLE IF NOT EXISTS run_party (
-    run_id          INTEGER NOT NULL REFERENCES run(id),
-    slot            INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 6),
-    form_id         INTEGER NOT NULL REFERENCES pokemon_form(id),
-    level           INTEGER NOT NULL CHECK(level BETWEEN 1 AND 100),
-    moves_json      TEXT NOT NULL DEFAULT '[]',   -- JSON array of move IDs (max 4)
-    held_item_id    INTEGER REFERENCES item(id),
-    PRIMARY KEY (run_id, slot)
-);
-
--- Box (all caught Pokémon including fainted for Nuzlocke)
-CREATE TABLE IF NOT EXISTS run_box (
+-- Owned Pokémon — party + box unified (migration 003 replaced run_party + run_box)
+-- in_party=1 means currently on the active team; party_slot holds 1–6.
+CREATE TABLE IF NOT EXISTS run_pokemon (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id          INTEGER NOT NULL REFERENCES run(id),
     form_id         INTEGER NOT NULL REFERENCES pokemon_form(id),
-    level           INTEGER NOT NULL,
+    level           INTEGER NOT NULL CHECK(level BETWEEN 1 AND 100),
     met_location_id INTEGER REFERENCES location(id),  -- NULL if starter/gift
-    is_alive        INTEGER NOT NULL DEFAULT 1         -- 0 = fainted (Nuzlocke dead)
+    is_alive        INTEGER NOT NULL DEFAULT 1,        -- 0 = fainted (Nuzlocke dead)
+    in_party        INTEGER NOT NULL DEFAULT 0,        -- 1 = on active team
+    party_slot      INTEGER CHECK(party_slot BETWEEN 1 AND 6),
+    moves_json      TEXT NOT NULL DEFAULT '[]',        -- JSON array of move IDs (max 4)
+    held_item_id    INTEGER REFERENCES item(id)
 );
+-- Unique active party slot per run
+CREATE UNIQUE INDEX IF NOT EXISTS ux_run_pokemon_party_slot
+    ON run_pokemon(run_id, party_slot) WHERE in_party = 1;
 
 -- Inventory
 CREATE TABLE IF NOT EXISTS run_item (
@@ -275,7 +280,88 @@ INSERT OR IGNORE INTO gen3_badge_cap (badge_count, level_cap) VALUES
 
 ---
 
-## Key Relationships
+## Additional Tables (added in later migrations)
+
+### `game_starter` (migration 002)
+
+Starter Pokémon options per game version. Used by the New Run form to pre-populate the party.
+
+```sql
+CREATE TABLE IF NOT EXISTS game_starter (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    version_id INTEGER NOT NULL REFERENCES game_version(id),
+    form_id    INTEGER NOT NULL REFERENCES pokemon_form(id),
+    priority   INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(version_id, form_id)
+);
+```
+
+### `in_game_trade` and `shop_item` (migration 006)
+
+Coach improvements: NPC trades, Game Corner prizes, and Poké Mart inventory.
+
+```sql
+-- NPC trades and Game Corner Pokémon (TEXT species names, no FK, resilient to partial hydration)
+CREATE TABLE IF NOT EXISTS in_game_trade (
+    id              INTEGER PRIMARY KEY,
+    location_id     INTEGER NOT NULL,
+    give_species    TEXT,           -- NULL = Game Corner entry
+    receive_species TEXT NOT NULL,
+    receive_nick    TEXT,
+    price_coins     INTEGER,        -- Game Corner cost; NULL for standard NPC trades
+    notes           TEXT
+);
+
+-- Poké Mart / Department Store inventory per location+version
+CREATE TABLE IF NOT EXISTS shop_item (
+    id          INTEGER PRIMARY KEY,
+    location_id INTEGER NOT NULL,
+    version_id  INTEGER NOT NULL,
+    item_name   TEXT NOT NULL,      -- TEXT slug (no FK); joined to item table by name at query time
+    price       INTEGER NOT NULL,
+    currency    TEXT NOT NULL DEFAULT 'pokedollar',
+    UNIQUE(location_id, version_id, item_name)
+);
+```
+
+### `tm_move` (migration 007)
+
+Maps Gen 3 TM numbers to PokeAPI move slugs (identical across all Gen 3 version groups).
+
+```sql
+CREATE TABLE IF NOT EXISTS tm_move (
+    tm_number INTEGER PRIMARY KEY,
+    move_name TEXT NOT NULL
+);
+```
+
+### `hm_move` and `tutor_move` (migration 008)
+
+```sql
+CREATE TABLE IF NOT EXISTS hm_move (
+    hm_number INTEGER PRIMARY KEY,
+    move_name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tutor_move (
+    id               INTEGER PRIMARY KEY,
+    version_group_id INTEGER NOT NULL,
+    move_name        TEXT NOT NULL,
+    location_name    TEXT NOT NULL,
+    UNIQUE(version_group_id, move_name)
+);
+```
+
+---
+
+## Static Locations (migration 005)
+
+Town/city locations that have no wild encounter areas are pre-seeded with **negative IDs** to
+guarantee no collision with positive PokeAPI `location-area` IDs. Display names use Title Case
+with spaces (e.g. `'Pallet Town'`) to distinguish them visually from PokeAPI slug-format entries
+(e.g. `'viridian-city-area'`).
+
+---
 
 ```
 user ──< run >── game_version

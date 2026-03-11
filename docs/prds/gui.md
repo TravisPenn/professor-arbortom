@@ -84,11 +84,12 @@ type BasePage struct {
 }
 
 type RunContext struct {
-    ID           int
-    Name         string
-    VersionName  string
-    BadgeCount   int
-    ActiveRules  []string   // rule keys where enabled=true, e.g. ["nuzlocke", "level_cap"]
+    ID          int
+    Name        string
+    VersionName string
+    BadgeCount  int
+    ActiveRules []string   // rule keys where enabled=true, e.g. ["nuzlocke", "level_cap"]
+    BadgePips   []bool     // true=filled pip; always 8 elements; pre-computed in handler
 }
 
 type Flash struct {
@@ -111,7 +112,20 @@ type Flash struct {
 ```go
 type RunsPage struct {
     BasePage
-    Runs []RunSummary
+    Runs              []RunSummary
+    ArchivedRuns      []RunSummary
+    Versions          []VersionOption
+    StartersByVersion map[int][]StarterOption
+}
+
+type VersionOption struct {
+    ID   int
+    Name string // display name, e.g. "FireRed"
+}
+
+type StarterOption struct {
+    FormID      int
+    SpeciesName string // capitalized, e.g. "Bulbasaur"
 }
 
 type RunSummary struct {
@@ -122,6 +136,7 @@ type RunSummary struct {
     BadgeCount  int
     ActiveRules []string
     UpdatedAt   string
+    Archived    bool
 }
 ```
 
@@ -146,11 +161,14 @@ type RunSummary struct {
 ```go
 type ProgressPage struct {
     BasePage
-    Locations      []Location      // filtered to run's version_id
-    CurrentLocID   int
-    BadgeCount     int
-    AllFlags       []FlagDef       // all known flags for this version
-    ActiveFlags    map[string]bool // run_flag rows: key → true
+    Locations        []Location      // filtered to run's version_id
+    CurrentLocID     *int
+    BadgeCount       int
+    AllFlags         []FlagDef       // all known flags for this version
+    ActiveFlags      map[string]bool // run_flag rows: key → true
+    LocationsSeeding bool            // true when PokeAPI region location seed is running
+    HydrationTotal   int             // total location areas for this version
+    HydrationSeeded  int             // how many have encounter data in api_cache_log
 }
 
 type FlagDef struct {
@@ -185,6 +203,16 @@ type TeamPage struct {
     LegalityErrors map[string]string // field → reason, populated on POST failure
 }
 
+// TeamSlotPage is used by the per-slot edit form (GET /runs/:id/team/:slot).
+type TeamSlotPage struct {
+    BasePage
+    SlotNum        int
+    Slot           PartySlot
+    LegalForms     []FormOption
+    LegalItems     []ItemOption
+    LegalityErrors map[string]string
+}
+
 type PartySlot struct {
     Slot        int
     FormID      *int
@@ -207,11 +235,15 @@ type FormOption struct {
 }
 
 type MoveOption struct {
-    ID          int
-    Name        string
-    TypeName    string
-    LearnMethod string
-    Level       int
+    ID            int
+    Name          string
+    TypeName      string
+    LearnMethod   string
+    Level         int
+    EvoNote       string // e.g. "Learns on evolution"
+    TMNumber      int    // >0 if learned via TM
+    HMNumber      int    // >0 if learned via HM
+    TutorLocation string // non-empty if taught by a move tutor
 }
 
 type ItemOption struct {
@@ -255,11 +287,13 @@ type BoxPage struct {
 
 type BoxEntry struct {
     ID           int
+    FormID       int
     SpeciesName  string
     FormName     string
     Level        int
     MetLocation  string   // "" if starter/gift
     IsAlive      bool
+    Evolutions   []Evolution // available evolutions shown inline; used for "Evolve" button
 }
 ```
 
@@ -361,14 +395,26 @@ type CoachPage struct {
     BasePage
     ZeroClawAvailable  bool
     Acquisitions       []FormOption       // from LegalAcquisitions
+    Trades             []TradeOption      // NPC trades + Game Corner at current location
     PartyMoves         []PartyMoveSummary // legal moves per party slot
     LegalItems         []ItemOption
     CoachAnswer        *CoachAnswer       // nil until POST submitted
     PlayerQuestion     string             // echoed back after POST
 }
 
+// TradeOption is an NPC trade or Game Corner entry at the run's current location.
+type TradeOption struct {
+    Method         string // "trade" | "game-corner"
+    GiveSpecies    string // empty for game-corner entries
+    ReceiveSpecies string
+    ReceiveNick    string
+    PriceCoins     int
+    Notes          string
+}
+
 type PartyMoveSummary struct {
     Slot        int
+    Level       int
     SpeciesName string
     Moves       []MoveOption
 }
