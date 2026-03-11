@@ -52,3 +52,28 @@ templates/              HTML templates (go:embed)
 static/                 CSS + assets (go:embed)
 docs/prds/              Product requirements documents
 ```
+
+## Dependencies
+
+### Runtime
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| [github.com/gin-gonic/gin](https://github.com/gin-gonic/gin) | v1.10.0 | HTTP web framework (routing, middleware, rendering) |
+| [github.com/joho/godotenv](https://github.com/joho/godotenv) | v1.5.1 | `.env` file loading for local development |
+| [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) | v1.29.9 | Pure-Go CGO-free SQLite driver (no C toolchain needed) |
+
+### External Data Source
+
+| Source | Usage |
+|--------|-------|
+| [PokéAPI](https://pokeapi.co) | Seeded once at startup to populate Pokémon, moves, items, evolutions, and locations. No runtime network dependency after the initial seed. |
+
+### Build Toolchain
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Go | 1.22 | `CGO_ENABLED=0` — pure-Go build |
+| Docker | — | Multi-stage build; final image is `FROM scratch` (no OS layer) |
+
+> Indirect dependencies (JSON codecs, validators, SQLite internals, etc.) are managed automatically via `go.mod` / `go.sum` and do not require manual installation.
