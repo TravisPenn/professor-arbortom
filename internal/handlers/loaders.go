@@ -173,7 +173,7 @@ func loadFlags(db *sql.DB, runID, versionID int) ([]FlagDef, map[string]bool, er
 // and how many of those areas have encounter data cached in api_cache_log.
 func getHydrationStats(db *sql.DB, versionID int) (total, seeded int, err error) {
 	if err = db.QueryRow(
-		`SELECT COUNT(*) FROM location WHERE version_id = ?`, versionID,
+		`SELECT COUNT(*) FROM location WHERE version_id = ? AND id > 0`, versionID,
 	).Scan(&total); err != nil {
 		return
 	}
@@ -181,7 +181,7 @@ func getHydrationStats(db *sql.DB, versionID int) (total, seeded int, err error)
 		SELECT COUNT(DISTINCT l.id)
 		FROM location l
 		JOIN api_cache_log a ON a.resource = 'location-area' AND a.resource_id = l.id
-		WHERE l.version_id = ?
+		WHERE l.version_id = ? AND l.id > 0
 	`, versionID).Scan(&seeded)
 	return
 }

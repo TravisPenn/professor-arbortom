@@ -159,6 +159,7 @@ func (c *Client) EnsureAllEncounters(db *sql.DB, versionID int) {
 	rows, err := db.Query(`
 		SELECT l.id FROM location l
 		WHERE l.version_id = ?
+		  AND l.id > 0
 		  AND NOT EXISTS (
 		    SELECT 1 FROM api_cache_log a
 		    WHERE a.resource = 'location-area' AND a.resource_id = l.id

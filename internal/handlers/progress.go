@@ -22,10 +22,18 @@ func ShowProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			return
 		}
 
-		// If no locations yet, trigger a background seed from PokeAPI and
-		// render immediately — user refreshes once seeding is done (~10s).
+		// If no PokeAPI locations exist yet (positive IDs), trigger a background
+		// seed from PokeAPI and render immediately — user refreshes once done (~10s).
+		// Static town/city locations (negative IDs) do not count as seeded.
+		hasPokeAPILocations := false
+		for _, l := range locations {
+			if l.ID > 0 {
+				hasPokeAPILocations = true
+				break
+			}
+		}
 		seeding := false
-		if len(locations) == 0 && pokeClient != nil {
+		if !hasPokeAPILocations && pokeClient != nil {
 			regionID := pokeapi.RegionIDForVersionID(run.VersionID)
 			if regionID != 0 {
 				seeding = true
@@ -89,7 +97,7 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		var locationID *int
 		if locationIDStr != "" {
-			if lid, err := strconv.Atoi(locationIDStr); err == nil && lid > 0 {
+			if lid, err := strconv.Atoi(locationIDStr); err == nil && lid != 0 {
 				locationID = &lid
 			}
 		}
@@ -123,8 +131,8 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			)
 		}
 
-		// Background: seed location encounters from PokeAPI
-		if locationID != nil && pokeClient != nil {
+		// Background: seed location encounters from PokeAPI (skip static towns — negative IDs)
+		if locationID != nil && *locationID > 0 && pokeClient != nil {
 			go func(locID, versionID, vgID int) {
 				_ = pokeClient.EnsureLocationEncounters(db, locID, versionID)
 			}(*locationID, run.VersionID, version.VersionGroupID)

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pennt/pokemonprofessor/internal/models"
 	"github.com/pennt/pokemonprofessor/internal/pokeapi"
+	"github.com/pennt/pokemonprofessor/internal/services"
 )
 
 // RedirectToRuns is the root handler: redirects / → /runs
@@ -179,10 +180,99 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 	}
 }
 
-// ShowRun redirects /runs/:run_id → /runs/:run_id/progress
+// ShowRun redirects /runs/:run_id → /runs/:run_id/overview
 func ShowRun(c *gin.Context) {
 	run := c.MustGet("run").(models.Run)
-	c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/progress")
+	c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/overview")
+}
+
+// ShowOverview renders GET /runs/:run_id/overview — a single-page summary dashboard.
+func ShowOverview(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		run := c.MustGet("run").(models.Run)
+		progress := c.MustGet("progress").(models.RunProgress)
+		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
+
+		// ── Progress: current location name + HM flags ─────────────────────────
+		var currentLocName string
+		if progress.CurrentLocationID != nil {
+			db.QueryRow(`SELECT name FROM location WHERE id = ?`, *progress.CurrentLocationID).
+				Scan(&currentLocName) //nolint:errcheck
+			currentLocName = capitalizeVersion(currentLocName)
+		}
+
+		_, activeFlags, _ := loadFlags(db, run.ID, run.VersionID)
+		var flagLabels []string
+		for _, fd := range gen3FlagDefs {
+			if activeFlags[fd.Key] {
+				flagLabels = append(flagLabels, fd.Label)
+			}
+		}
+
+		// ── Team: slots 1-6 ───────────────────────────────────────────────────
+		slots := [6]OverviewSlot{}
+		for i := range slots {
+			slots[i].Slot = i + 1
+		}
+		teamRows, err := db.Query(`
+			SELECT rp.party_slot, ps.name, rp.level
+			FROM run_pokemon rp
+			JOIN pokemon_form pf ON pf.id = rp.form_id
+			JOIN pokemon_species ps ON ps.id = pf.species_id
+			WHERE rp.run_id = ? AND rp.in_party = 1 AND rp.is_alive = 1
+			ORDER BY rp.party_slot
+		`, run.ID)
+		if err == nil {
+			defer teamRows.Close()
+			for teamRows.Next() {
+				var s, lvl int
+				var name string
+				if teamRows.Scan(&s, &name, &lvl) == nil && s >= 1 && s <= 6 {
+					slots[s-1] = OverviewSlot{Slot: s, SpeciesName: capitalizeVersion(name), Level: lvl}
+				}
+			}
+		}
+
+		// ── Box stats ─────────────────────────────────────────────────────────
+		var alive, fainted int
+		db.QueryRow(`SELECT COUNT(*) FROM run_pokemon WHERE run_id = ? AND in_party = 0 AND is_alive = 1`, run.ID).Scan(&alive) //nolint:errcheck
+		db.QueryRow(`SELECT COUNT(*) FROM run_pokemon WHERE run_id = ? AND is_alive = 0`, run.ID).Scan(&fainted)                //nolint:errcheck
+
+		// ── Recent route log (last 5) ─────────────────────────────────────────
+		recentRoutes, _ := loadRouteLog(db, run.ID, false)
+		if len(recentRoutes) > 5 {
+			recentRoutes = recentRoutes[:5]
+		}
+
+		// ── Active rule keys ──────────────────────────────────────────────────
+		var ruleKeys []string
+		for _, r := range activeRules {
+			if r.Enabled {
+				ruleKeys = append(ruleKeys, r.Key)
+			}
+		}
+
+		// ── Team slot list (slice for template) ──────────────────────────────
+		slotList := make([]OverviewSlot, 6)
+		copy(slotList, slots[:])
+
+		page := OverviewPage{
+			BasePage: BasePage{
+				PageTitle:  "Overview",
+				ActiveNav:  "overview",
+				RunContext: buildRunContext(c),
+			},
+			CurrentLocationName: currentLocName,
+			ActiveFlags:         flagLabels,
+			TeamSlots:           slotList,
+			BoxAlive:            alive,
+			BoxFainted:          fainted,
+			RecentRoutes:        recentRoutes,
+			ActiveRules:         ruleKeys,
+			ZeroClawAvailable:   zc.IsAvailable(),
+		}
+		c.HTML(http.StatusOK, "overview.html", page)
+	}
 }
 
 // ArchiveRun handles POST /runs/:run_id/archive — soft-archives the run.

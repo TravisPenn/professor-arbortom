@@ -207,6 +207,32 @@ type RuleCard struct {
 	Params      map[string]interface{}
 }
 
+// ─── Run Overview (dashboard) ─────────────────────────────────────────────────
+
+type OverviewPage struct {
+	BasePage
+	// Progress summary
+	CurrentLocationName string
+	ActiveFlags         []string // labels of set flags
+	// Team summary
+	TeamSlots []OverviewSlot
+	// Box stats
+	BoxAlive   int
+	BoxFainted int
+	// Route log (last 5)
+	RecentRoutes []RouteEntry
+	// Rules
+	ActiveRules []string
+	// Coach
+	ZeroClawAvailable bool
+}
+
+type OverviewSlot struct {
+	Slot        int
+	SpeciesName string // empty = empty slot
+	Level       int
+}
+
 // ─── Coaching Panel ───────────────────────────────────────────────────────────
 
 type CoachPage struct {

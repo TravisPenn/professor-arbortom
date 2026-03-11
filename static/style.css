@@ -187,6 +187,60 @@ main {
 .type-dark     { background: #705848; color: #fff; }
 .type-steel    { background: #B8B8D0; color: #333; }
 
+/* ── Run Overview Dashboard ───────────────────────────────────────────────── */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.overview-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+}
+
+.overview-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.overview-card-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.overview-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.75rem;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.overview-dl dt { font-weight: 500; color: #555; white-space: nowrap; }
+.overview-dl dd { margin: 0; }
+
+.overview-team-table { width: 100%; font-size: 0.9rem; }
+.overview-team-table td { padding: 0.15rem 0.3rem; border: none; }
+.overview-team-table td:first-child { width: 1.5rem; color: #999; font-size: 0.8rem; }
+
+.overview-routes-table { width: 100%; font-size: 0.88rem; }
+.overview-routes-table td { padding: 0.15rem 0.3rem; border: none; }
+.overview-routes-table td:first-child { color: #666; }
+
+.overview-rules { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+.flag-chip { font-size: 0.78em; margin-right: 0.2rem; }
+
+.overview-coach-status { font-size: 0.9rem; margin: 0; }
+
 /* ── Run Dashboard ────────────────────────────────────────────────────────── */
 
 .run-table { margin-bottom: 2rem; }

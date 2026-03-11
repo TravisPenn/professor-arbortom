@@ -50,8 +50,11 @@ func ExportSeeds(db *sql.DB, dbPath string) error {
 
 // ApplySeedsIfEmpty loads seeds.sql into the database when the location table
 // is empty and a seeds file exists adjacent to the DB.
-// No-op if reference data is already present or no seeds file exists.
-func ApplySeedsIfEmpty(db *sql.DB, dbPath string) error {
+// No-op if reference data is already present.
+// On a fresh DB it tries the seeds.sql file adjacent to dbPath first; if that
+// file does not exist, bundled is used as a fallback (may be nil, in which
+// case no seeding occurs and PokeAPI will hydrate lazily).
+func ApplySeedsIfEmpty(db *sql.DB, dbPath string, bundled []byte) error {
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM location`).Scan(&count); err != nil || count > 0 {
 		return nil // table missing (pre-migration) or already populated
@@ -59,7 +62,10 @@ func ApplySeedsIfEmpty(db *sql.DB, dbPath string) error {
 
 	data, err := os.ReadFile(SeedsPath(dbPath))
 	if err != nil {
-		return nil // no seeds file — not an error, will fetch from PokeAPI instead
+		if len(bundled) == 0 {
+			return nil // no seeds anywhere — PokeAPI will hydrate lazily
+		}
+		data = bundled // use the copy embedded in the binary
 	}
 
 	// Execute each semicolon-terminated statement individually.

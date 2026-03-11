@@ -14,6 +14,7 @@
   <span class="nav-sep">|</span>
   <span class="nav-run-name">{{.RunContext.Name}}</span>
   <span class="nav-sep">·</span>
+  <a href="/runs/{{.RunContext.ID}}/overview"  class="{{if eq .ActiveNav "overview"}}nav-active{{end}}">Overview</a>
   <a href="/runs/{{.RunContext.ID}}/progress" class="{{if eq .ActiveNav "progress"}}nav-active{{end}}">Progress</a>
   <a href="/runs/{{.RunContext.ID}}/team"     class="{{if eq .ActiveNav "team"}}nav-active{{end}}">Team</a>
   <a href="/runs/{{.RunContext.ID}}/box"      class="{{if eq .ActiveNav "box"}}nav-active{{end}}">Box</a>

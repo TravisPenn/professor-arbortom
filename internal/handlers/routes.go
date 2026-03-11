@@ -103,7 +103,7 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 
 		// Insert box entry if caught
 		var metLocPtr interface{} = nil
-		if locationID > 0 {
+		if locationID != 0 {
 			metLocPtr = locationID
 		}
 
