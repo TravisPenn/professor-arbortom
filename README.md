@@ -1,8 +1,11 @@
 # PokemonProfessor
 
-A legality-first Pokémon Gen 3 run tracker. Tells you what you can legally obtain, use, and
+A legality-first Pokémon run tracker. Tells you what you can legally obtain, use, and
 evolve at your current point in a playthrough — respecting version differences and
 player-imposed restrictions (Nuzlocke, level caps, theme runs).
+
+Currently implemented for **Gen 3** (FireRed, LeafGreen, Ruby, Sapphire, Emerald), with the
+architecture designed to support all generations going forward.
 
 Runs fully offline after initial PokeAPI seed. Served as a single static Go binary on a LAN.
 
