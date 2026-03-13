@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/legality"
-	"github.com/pennt/pokemonprofessor/internal/services"
+	"github.com/TravisPenn/professor-arbortom/internal/legality"
+	"github.com/TravisPenn/professor-arbortom/internal/services"
 )
 
 // apiErrorMsg returns err.Error() in debug mode, generic message in release.

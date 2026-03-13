@@ -1,4 +1,4 @@
-module github.com/pennt/pokemonprofessor
+module github.com/TravisPenn/professor-arbortom
 
 go 1.22
 

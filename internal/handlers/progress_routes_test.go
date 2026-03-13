@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/models"
 	_ "modernc.org/sqlite"
 )
 

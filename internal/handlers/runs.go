@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/models"
-	"github.com/pennt/pokemonprofessor/internal/pokeapi"
-	"github.com/pennt/pokemonprofessor/internal/services"
+	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
+	"github.com/TravisPenn/professor-arbortom/internal/services"
 )
 
 // RedirectToRuns is the root handler: redirects / → /runs

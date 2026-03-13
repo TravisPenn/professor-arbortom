@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	pkgdb "github.com/pennt/pokemonprofessor/internal/db"
+	pkgdb "github.com/TravisPenn/professor-arbortom/internal/db"
 )
 
 // regionResponse is a partial PokeAPI /region/{id} response.

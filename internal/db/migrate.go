@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/pennt/pokemonprofessor/migrations"
+	"github.com/TravisPenn/professor-arbortom/migrations"
 )
 
 const currentVersion = 10
