@@ -9,9 +9,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/legality"
-	"github.com/pennt/pokemonprofessor/internal/models"
-	"github.com/pennt/pokemonprofessor/internal/pokeapi"
+	"github.com/TravisPenn/professor-arbortom/internal/legality"
+	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
 )
 
 // ShowTeam renders GET /runs/:run_id/team — compact overview, no heavy selects.

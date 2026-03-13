@@ -20,8 +20,8 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
     -ldflags="-s -w -X main.Version=${VERSION}" \
-    -o /app/pokemonprofessor \
-    ./cmd/pokemonprofessor
+    -o /app/professor-arbortom \
+    ./cmd/professor-arbortom
 
 # SEC-017: Create a non-root user for the final image.
 RUN adduser -D -u 10001 appuser
@@ -36,7 +36,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /etc/passwd /etc/passwd
 
 # Copy the statically linked binary
-COPY --from=builder /app/pokemonprofessor /app/pokemonprofessor
+COPY --from=builder /app/professor-arbortom /app/professor-arbortom
 
 # SEC-017: Run as non-root user.
 USER appuser
@@ -49,4 +49,4 @@ ENV GIN_MODE=release
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/pokemonprofessor"]
+ENTRYPOINT ["/app/professor-arbortom"]

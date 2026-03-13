@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/pennt/pokemonprofessor/internal/legality"
+	"github.com/TravisPenn/professor-arbortom/internal/legality"
 )
 
 // acquisitionToFormOption converts a legality.Acquisition to a FormOption.

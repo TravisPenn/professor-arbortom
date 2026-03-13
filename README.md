@@ -1,4 +1,4 @@
-# PokemonProfessor
+# Professor Arbortom
 
 A legality-first Pokémon run tracker. Tells you what you can legally obtain, use, and
 evolve at your current point in a playthrough — respecting version differences and
@@ -17,9 +17,9 @@ See [`docs/prds/architecture.md`](docs/prds/architecture.md).
 
 ```sh
 # Build Linux binary from Windows via Docker
-docker build --build-arg VERSION=$(git rev-parse --short HEAD) -t pokemonprofessor:latest .
-docker create --name extract pokemonprofessor:latest
-docker cp extract:/app/pokemonprofessor ./pokemonprofessor-linux-amd64
+docker build --build-arg VERSION=$(git rev-parse --short HEAD) -t professor-arbortom:latest .
+docker create --name extract professor-arbortom:latest
+docker cp extract:/app/professor-arbortom ./professor-arbortom-linux-amd64
 docker rm extract
 ```
 
@@ -28,7 +28,7 @@ docker rm extract
 ```sh
 cp .env.example .env
 # edit .env: set POKEMON_DB_PATH, PORT
-go run ./cmd/pokemonprofessor
+go run ./cmd/professor-arbortom
 ```
 
 ## Environment Variables
@@ -43,7 +43,7 @@ go run ./cmd/pokemonprofessor
 ## Project Structure
 
 ```
-cmd/pokemonprofessor/   entrypoint
+cmd/professor-arbortom/   entrypoint
 internal/
   db/                   DB connection + migrations
   pokeapi/              PokeAPI fetch + cache layer

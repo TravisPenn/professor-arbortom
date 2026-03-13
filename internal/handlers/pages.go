@@ -2,7 +2,7 @@
 // PokemonProfessor. All template data structs embed BasePage.
 package handlers
 
-import "github.com/pennt/pokemonprofessor/internal/legality"
+import "github.com/TravisPenn/professor-arbortom/internal/legality"
 
 // ─── Base page types ──────────────────────────────────────────────────────────
 

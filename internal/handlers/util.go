@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/models"
 )
 
 // itoa is a convenience wrapper for int to string conversion.

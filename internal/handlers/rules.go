@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pennt/pokemonprofessor/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/models"
 )
 
 // ShowRules renders GET /runs/:run_id/rules
