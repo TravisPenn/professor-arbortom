@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -97,6 +98,46 @@ func main() {
 			}
 			return template.JS(b), nil //nolint:gosec // data is server-controlled, not user input
 		},
+		// evoMethod formats an evolution trigger+conditions map into a short
+		// human-readable label, e.g. "Lv 36", "use Fire Stone", "trade".
+		"evoMethod": func(trigger string, conds map[string]interface{}) string {
+			toInt := func(v interface{}) int {
+				switch t := v.(type) {
+				case float64:
+					return int(t)
+				case int:
+					return t
+				}
+				return 0
+			}
+			switch trigger {
+			case "level-up":
+				if v, ok := conds["min_level"]; ok {
+					if lvl := toInt(v); lvl > 0 {
+						return fmt.Sprintf("Lv %d", lvl)
+					}
+				}
+				if _, ok := conds["friendship"]; ok {
+					return "high friendship"
+				}
+				if _, ok := conds["held_item_id"]; ok {
+					return "level-up (held item)"
+				}
+				return "level-up"
+			case "use-item":
+				return "use item"
+			case "trade":
+				if ts, ok := conds["trade_species"]; ok {
+					return fmt.Sprintf("trade for %v", ts)
+				}
+				return "trade"
+			default:
+				if trigger != "" {
+					return trigger
+				}
+				return "?"
+			}
+		},
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(poketemplates.FS, "*.html")
 	if err != nil {
@@ -160,8 +201,8 @@ func main() {
 			run.POST("/routes", handlers.LogEncounter(database, pokeClient))
 			run.GET("/rules", handlers.ShowRules(database))
 			run.POST("/rules", handlers.UpdateRules(database))
-			run.GET("/coach", handlers.ShowCoach(database, zc))
-			run.POST("/coach", handlers.QueryCoach(database, zc))
+			run.GET("/coach", handlers.ShowCoach(database, pokeClient, zc))
+			run.POST("/coach", handlers.QueryCoach(database, pokeClient, zc))
 		}
 	}
 

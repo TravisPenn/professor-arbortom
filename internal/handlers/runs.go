@@ -161,8 +161,9 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Insert starter into run_pokemon: slot 1, level 5, on the party.
 		if _, err := db.Exec(
-			`INSERT INTO run_pokemon (run_id, form_id, level, is_alive, in_party, party_slot, moves_json)
-			 VALUES (?, ?, 5, 1, 1, 1, '[]')`,
+			`INSERT INTO run_pokemon (run_id, form_id, level, caught_level, acquisition_type,
+			 is_alive, in_party, party_slot, moves_json)
+			 VALUES (?, ?, 5, 5, 'starter', 1, 1, 1, '[]')`,
 			runID, starterFormID,
 		); err != nil {
 			respondError(c, err)

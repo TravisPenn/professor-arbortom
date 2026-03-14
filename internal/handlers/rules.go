@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowRules renders GET /runs/:run_id/rules
@@ -80,6 +80,21 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 					enabled = excluded.enabled,
 					params_json = excluded.params_json
 			`, run.ID, d.id, enabled, paramsJSON) //nolint:errcheck
+
+			// SC-003 compatibility: mirror enabled rules into run_setting.
+			if tableExists(db, "run_setting") {
+				if enabled == 1 {
+					db.Exec(
+						`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'rule', ?, ?)`,
+						run.ID, d.key, paramsJSON,
+					) //nolint:errcheck
+				} else {
+					db.Exec(
+						`DELETE FROM run_setting WHERE run_id = ? AND type = 'rule' AND key = ?`,
+						run.ID, d.key,
+					) //nolint:errcheck
+				}
+			}
 		}
 
 		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/rules")

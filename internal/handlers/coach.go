@@ -7,15 +7,16 @@ import (
 
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 // ShowCoach renders GET /runs/:run_id/coach
-func ShowCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
+func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
-		page, err := buildCoachPage(c, db, run.ID, zc.IsAvailable())
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, zc.IsAvailable())
 		if err != nil {
 			respondError(c, err)
 			return
@@ -25,7 +26,7 @@ func ShowCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 }
 
 // QueryCoach handles POST /runs/:run_id/coach
-func QueryCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
+func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		question := c.PostForm("question")
@@ -37,7 +38,7 @@ func QueryCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 		}
 
 		available := zc.IsAvailable()
-		page, err := buildCoachPage(c, db, run.ID, available)
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, available)
 		if err != nil {
 			respondError(c, err)
 			return
@@ -73,10 +74,34 @@ func QueryCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (CoachPage, error) {
+func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runID int, available bool) (CoachPage, error) {
 	acqs, _, err := legality.LegalAcquisitions(db, runID)
 	if err != nil {
 		return CoachPage{}, err
+	}
+
+	// CD-001: Deduplicate acquisitions by (species, form, location), merging level ranges.
+	type acqKey struct{ species, form, location string }
+	grouped := map[acqKey]*legality.Acquisition{}
+	var groupOrder []acqKey
+	for _, a := range acqs {
+		k := acqKey{a.SpeciesName, a.FormName, a.LocationName}
+		if g, ok := grouped[k]; ok {
+			if a.MinLevel < g.MinLevel {
+				g.MinLevel = a.MinLevel
+			}
+			if a.MaxLevel > g.MaxLevel {
+				g.MaxLevel = a.MaxLevel
+			}
+		} else {
+			copy := a
+			grouped[k] = &copy
+			groupOrder = append(groupOrder, k)
+		}
+	}
+	acqs = nil
+	for _, k := range groupOrder {
+		acqs = append(acqs, *grouped[k])
 	}
 
 	trades, err := legality.LegalTrades(db, runID)
@@ -131,6 +156,29 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 			JOIN pokemon_species ps ON ps.id = pf.species_id
 			WHERE pf.id = ?
 		`, formID).Scan(&speciesName) //nolint:errcheck
+
+		// Trigger background seeding for direct evolution targets that lack
+		// learnset data — ensures evo-note and evo-exclusive columns are populated.
+		if pokeClient != nil {
+			var vgID int
+			db.QueryRow(`SELECT gv.version_group_id FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&vgID) //nolint:errcheck
+			if vgID > 0 {
+				evoTargets, _ := db.Query(`SELECT DISTINCT to_form_id FROM evolution_condition WHERE from_form_id = ?`, formID)
+				if evoTargets != nil {
+					for evoTargets.Next() {
+						var eid int
+						if evoTargets.Scan(&eid) == nil {
+							var cnt int
+							db.QueryRow(`SELECT COUNT(*) FROM learnset_entry WHERE form_id = ?`, eid).Scan(&cnt) //nolint:errcheck
+							if cnt == 0 {
+								pokeClient.GoEnsurePokemon(db, eid, vgID)
+							}
+						}
+					}
+					evoTargets.Close()
+				}
+			}
+		}
 
 		mvs, _ := legality.CoachMoves(db, runID, formID, level)
 		var moveOpts []MoveOption

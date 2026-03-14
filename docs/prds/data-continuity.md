@@ -1,8 +1,9 @@
 # PokemonProfessor — run_pokemon Data Continuity PRD
 
-**Status**: Draft
+**Status**: Phase 1 + 1b Implemented · Phase 2 Pending
 **Priority**: High
 **Date**: 2026-03-14
+**Last updated**: 2026-03-14
 
 Cross-reference: [architecture.md](architecture.md), [schema.md](schema.md), [api.md](api.md)
 
@@ -10,18 +11,21 @@ Cross-reference: [architecture.md](architecture.md), [schema.md](schema.md), [ap
 
 ## Executive Summary
 
-The `run_pokemon` table is the single canonical record for every Pokémon a player owns.
-Three independent code paths write to it — run creation (starters), Routes / `LogEncounter`,
-and Team / `UpdateTeam` — but they were designed in isolation. The result is silent data
-corruption: level values recorded in the Routes log are overwritten by Team edits; the same
-Pokémon can have duplicate rows with conflicting data; and there is no way to distinguish a
-wild catch from a starter from a gift from a manually placed Pokémon.
+This PRD covers two sequential phases of work.
 
-The concrete symptom that exposed this: **Moltres logged on Routes at level 50 appears at
+**Phase 1 — Data Continuity (DC-001 – DC-007)** fixes three bugs caused by isolated
+write paths into the `run_pokemon` table: level values recorded on Routes are overwritten
+by Team edits; the same Pokémon can accumulate duplicate rows with conflicting data; and
+there is no way to distinguish a wild catch from a starter from a gift from a manually
+placed Pokémon. The concrete symptom: **Moltres logged on Routes at level 50 appears at
 level 1 with no catch location in Box and Team** — indistinguishable from a gift Pokémon.
 
-This PRD specifies the schema additions and handler corrections needed to establish full data
-continuity across all three write paths.
+**Phase 2 — Schema Consolidation (SC-001 – SC-003)** reduces the table count from 25 to
+18 by merging three groups of tables that model the same entity or are always accessed
+together. This eliminates unnecessary JOIN depth in every handler query and removes
+table-per-concern fragmentation that was added migration-by-migration without a
+higher-level design review. Phase 2 depends on Phase 1 being complete and all handlers
+already updated.
 
 ---
 
@@ -77,7 +81,7 @@ silently ignores its own starter and manual-add rows.
 
 ## Proposed Changes
 
-### DC-001 · Schema — Migration 012
+### DC-001 · Schema — Migration 012 ✅
 
 Add two columns to `run_pokemon`:
 
@@ -113,7 +117,7 @@ WHERE met_location_id IS NULL
   AND acquisition_type = 'manual';
 ```
 
-### DC-002 · Handler — `internal/handlers/runs.go` (starter insertion)
+### DC-002 · Handler — `internal/handlers/runs.go` (starter insertion) ✅
 
 Set `acquisition_type` and `caught_level` on the existing `INSERT`:
 
@@ -130,7 +134,7 @@ db.Exec(`INSERT INTO run_pokemon
     VALUES (?, ?, 5, 5, 'starter', 1, 1, 1, '[]')`, runID, starterFormID)
 ```
 
-### DC-003 · Handler — `internal/handlers/routes.go` (`LogEncounter`)
+### DC-003 · Handler — `internal/handlers/routes.go` (`LogEncounter`) ✅
 
 Replace the unconditional `INSERT` with an **upsert-or-merge** strategy:
 
@@ -177,7 +181,7 @@ if existingID > 0 {
 > *before* this block and remains unchanged. `gift` and `starter` rows are deliberately
 > excluded from the merge match so they are never silently reclassified as `wild`.
 
-### DC-004 · Handler — `internal/handlers/team.go` (`UpdateTeam`)
+### DC-004 · Handler — `internal/handlers/team.go` (`UpdateTeam`) ✅
 
 Remove `level` from the `UPDATE` statement so a Team edit never overwrites the
 Routes-logged level:
@@ -208,7 +212,7 @@ if pkmnID == 0 {
 }
 ```
 
-### DC-005 · Handler — `internal/handlers/loaders.go` (`loadRouteLog`)
+### DC-005 · Handler — `internal/handlers/loaders.go` (`loadRouteLog`) ✅
 
 Use `caught_level` (not `level`) in the Routes log query, falling back to `level` for
 legacy rows where `caught_level` is NULL:
@@ -232,7 +236,7 @@ Update `RouteEntry.Outcome` to render `acquisition_type` as a human label —
 `'wild'` → "Caught", `'starter'` → "Starter", `'gift'` → "Gift",
 `'trade'` → "Trade", `'manual'` → "Added".
 
-### DC-006 · Data Model — `internal/handlers/pages.go`
+### DC-006 · Data Model — `internal/handlers/pages.go` ✅
 
 Add `CaughtLevel` and `AcquisitionType` to `BoxEntry` so templates can render them:
 
@@ -267,7 +271,7 @@ type BoxEntry struct {
 Update the `ShowBox` query in `team.go` to scan `rp.caught_level` and
 `rp.acquisition_type` into the new fields.
 
-### DC-007 · Templates
+### DC-007 · Templates ✅
 
 **`templates/box.html`**
 
@@ -283,9 +287,294 @@ Update the `ShowBox` query in `team.go` to scan `rp.caught_level` and
 
 ---
 
+## Phase 1b — Coach Display Improvements
+
+The Coach page displays three data panels that need accuracy and usability fixes.
+These changes modify the legality engine (`CoachMoves`), the handler (`buildCoachPage`),
+the page structs, and the template — but require no schema changes.
+
+### CD-001 · Available Pokémon — Deduplicate by Species, Show Level Range ✅
+
+**Current behaviour**: the Acquisitions table lists one row per encounter row.
+A location with five Oddish encounter methods (walk, surf, rod…) at different level
+ranges produces five identical-looking rows. The table is noisy and unhelpful.
+
+**Required behaviour**: group by `(species_name, form_name, location_name)` and show a
+single row with the combined level range (min of all `min_level` → max of all `max_level`).
+The method column is dropped or shows a comma-separated summary.
+
+**Implementation** — `internal/handlers/coach.go` (`buildCoachPage`):
+
+After the `LegalAcquisitions` call, aggregate rows by species+location:
+
+```go
+type acqKey struct{ species, form, location string }
+grouped := map[acqKey]*legality.Acquisition{}
+for _, a := range acqs {
+    k := acqKey{a.SpeciesName, a.FormName, a.LocationName}
+    if g, ok := grouped[k]; ok {
+        if a.MinLevel < g.MinLevel { g.MinLevel = a.MinLevel }
+        if a.MaxLevel > g.MaxLevel { g.MaxLevel = a.MaxLevel }
+    } else {
+        copy := a
+        grouped[k] = &copy
+    }
+}
+// Flatten back to slice — order by species name.
+```
+
+**Template** — `templates/coach.html`:
+
+Remove the "Method" column from the Available Pokémon table. Change column header
+from "Levels" to "Level Range".
+
+### CD-002 · Party Moves — Filter Past Level-Up Moves ✅ (no change needed)
+
+**Current behaviour**: `CoachMoves` already filters `level_learned <= currentLevel` for
+level-up moves. However, the filter uses **strict less-than-or-equal**, which means a
+move at the Pokémon's exact current level is hidden. This is correct — the player already
+had the chance to learn it when they reached that level.
+
+**No code change needed** — this filter is already working correctly. Confirmed by reading
+`CoachMoves` line: `if mv.LearnMethod == "level-up" && currentLevel > 0 && mv.LevelLearned <= currentLevel`.
+
+### CD-003 · Party Moves — Show All Evo Levels in Evo Column ✅
+
+**Current behaviour**: `annotateEvoNotes` shows an evo note only when the evolution learns
+the **same move** at a **different level**. It produces a note like "Ivysaur Lv22 ↑" but
+does not show Venusaur's level for that same move, and does not show notes when the level
+is the same.
+
+**Required behaviour**: for every level-up move in the table, the Evo column should show
+**all** evolution stages' levels for that move, regardless of whether the level differs.
+
+Example: Bulbasaur Lv 5, move "Solar Beam" (learns at Lv 46):
+- Evo column: "Ivysaur Lv46 · Venusaur Lv46"
+
+Example: Bulbasaur Lv 5, move "Razor Leaf" (learns at Lv 19):
+- Evo column: "Ivysaur Lv20 · Venusaur Lv20"
+
+**Implementation** — `internal/legality/moves.go` (`annotateEvoNotes`):
+
+Remove the `if evoLvl < moves[i].LevelLearned` / `else if evoLvl > ...` conditional.
+Always append the evolution's level for any move it learns via level-up, including when
+the level is identical:
+
+```go
+for _, evo := range evos {
+    ls := evoLearnsets[evo.formID]
+    evoLvl, ok := ls[moves[i].Name]
+    if !ok {
+        continue
+    }
+    label := capitalizeFirst(evo.name)
+    notes = append(notes, fmt.Sprintf("%s Lv%d", label, evoLvl))
+}
+```
+
+The ↑/↓ arrows are removed — the raw level numbers are more useful than a relative
+indicator when the player is comparing across three stages.
+
+### CD-004 · Party Moves — Include Future Evolution-Exclusive Moves ✅
+
+**Current behaviour**: the "Your Party Moves" table only shows moves learnable by the
+**current form**. If Ivysaur learns "Petal Dance" at Lv 44 but Bulbasaur does not learn
+it at all, it is invisible — the player has no way to plan for it.
+
+**Required behaviour**: after listing the current form's moves, append moves that are
+**exclusive** to one or more evolutions (i.e., not in the current form's learnset at all).
+These appear with a synthetic `LearnMethod` of `"evo-exclusive"` and the Evo column shows
+which evolution learns it and at what level.
+
+**Implementation** — `internal/legality/moves.go` (new function `appendEvoExclusiveMoves`):
+
+Called at the end of `CoachMoves`, after `annotateEvoNotes`:
+
+```go
+func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID int) ([]Move, error) {
+    // 1. Load all direct evolution form IDs (same query as annotateEvoNotes).
+    // 2. For each evolution, load its full learnset (all methods, not just level-up).
+    // 3. Build a set of move names already in `moves`.
+    // 4. For each evo move NOT in the current form's set:
+    //    a. Create a Move with LearnMethod = "evo-exclusive"
+    //    b. Set EvoNote = "<EvoName> Lv<X>" (level-up) or "<EvoName> (machine)" etc.
+    //    c. Append to moves.
+    // 5. Also walk second-stage evolutions (e.g., Venusaur from Ivysaur).
+    return moves, nil
+}
+```
+
+The function must also check the **full evolution chain** — not just direct evolutions.
+For Bulbasaur: check both Ivysaur and Venusaur. This means querying
+`evolution_condition` recursively (max depth 2 for Gen 3).
+
+**Template** — `templates/coach.html`:
+
+Rows with `LearnMethod == "evo-exclusive"` should be styled differently (muted background,
+italic species name) to visually separate them from the current form's moves. The "Learn 
+Method" cell shows the evolution name and level (e.g., "Venusaur Lv 65").
+
+**Data model** — `internal/handlers/pages.go`:
+
+No change to `MoveOption` needed — `LearnMethod` and `EvoNote` already exist. The
+`LearnMethod` value `"evo-exclusive"` is new but the field is already a free-form string.
+
+---
+
+## Phase 2 — Schema Consolidation ⏳
+
+These changes reduce the table count from 25 to 18. They have no effect on application
+behaviour — only on query complexity and schema legibility. All handlers must be updated
+to reference the new table and column names.
+
+### SC-001 · Merge Pokémon Reference Tables (5 → 1)
+
+**Tables removed**: `pokemon_species`, `pokemon_form`, `pokemon_type`, `pokemon_stats`,
+`pokemon_ability`
+
+**New table**: `pokemon`
+
+```sql
+-- 013_merge_pokemon_tables.sql
+
+CREATE TABLE IF NOT EXISTS pokemon (
+    id           INTEGER PRIMARY KEY,   -- PokeAPI pokemon.id (was pokemon_form.id)
+    species_name TEXT NOT NULL,         -- was pokemon_species.name
+    form_name    TEXT NOT NULL,         -- was pokemon_form.form_name
+    type1        TEXT NOT NULL,         -- primary type
+    type2        TEXT,                  -- secondary type; NULL if mono-type
+    hp           INTEGER NOT NULL DEFAULT 0,
+    attack       INTEGER NOT NULL DEFAULT 0,
+    defense      INTEGER NOT NULL DEFAULT 0,
+    sp_attack    INTEGER NOT NULL DEFAULT 0,
+    sp_defense   INTEGER NOT NULL DEFAULT 0,
+    speed        INTEGER NOT NULL DEFAULT 0,
+    ability1     TEXT,
+    ability2     TEXT
+);
+```
+
+**Rationale**: Gen 3 has essentially no alternate forms. `pokemon_type` stored two rows
+per Pokémon (slot 1 / slot 2); `pokemon_stats` was always 1:1 with `pokemon_form`;
+`pokemon_ability` stored at most two rows. Denormalising these into columns eliminates
+five tables and three JOINs on every legality query. The `species_id` level of
+normalisation (originally splitting species from form for PokeAPI alignment) is not
+needed by any application query — species name is only displayed, never joined upon.
+
+**Handler impact**: every query referencing `pokemon_form`, `pokemon_species`,
+`pokemon_type`, `pokemon_stats`, or `pokemon_ability` is rewritten to reference `pokemon`.
+The PokeAPI seeding layer (`internal/pokeapi/`) is updated to `INSERT INTO pokemon` instead
+of the five separate tables.
+
+**Data migration** (inside `013_merge_pokemon_tables.sql`):
+```sql
+INSERT INTO pokemon (id, species_name, form_name, type1, type2,
+    hp, attack, defense, sp_attack, sp_defense, speed, ability1, ability2)
+SELECT
+    pf.id,
+    ps.name,
+    pf.form_name,
+    COALESCE((SELECT type_name FROM pokemon_type WHERE form_id = pf.id AND slot = 1), 'normal'),
+    (SELECT type_name FROM pokemon_type WHERE form_id = pf.id AND slot = 2),
+    COALESCE(st.hp,        0),
+    COALESCE(st.attack,    0),
+    COALESCE(st.defense,   0),
+    COALESCE(st.sp_attack, 0),
+    COALESCE(st.sp_defense,0),
+    COALESCE(st.speed,     0),
+    (SELECT ability_name FROM pokemon_ability WHERE form_id = pf.id AND slot = 1),
+    (SELECT ability_name FROM pokemon_ability WHERE form_id = pf.id AND slot = 2)
+FROM pokemon_form pf
+JOIN pokemon_species ps ON ps.id = pf.species_id
+LEFT JOIN pokemon_stats st ON st.form_id = pf.id;
+
+-- Retarget FKs (SQLite requires recreating tables with FKs; cascade via PRAGMA)
+-- encounter, learnset_entry, evolution_condition, game_starter already reference
+-- form_id; those column names remain valid since pokemon.id == old pokemon_form.id.
+-- run_pokemon.form_id → rename to pokemon_id in the same migration.
+```
+
+### SC-002 · Merge `run` + `run_progress` (2 → 1)
+
+**Tables removed**: `run_progress`
+
+**Columns added to `run`**: `badge_count INTEGER NOT NULL DEFAULT 0`,
+`current_location_id INTEGER REFERENCES location(id)`, `progress_updated_at TEXT`
+
+```sql
+-- 014_merge_run_progress.sql
+
+ALTER TABLE run ADD COLUMN badge_count         INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE run ADD COLUMN current_location_id INTEGER REFERENCES location(id);
+ALTER TABLE run ADD COLUMN progress_updated_at TEXT;
+
+UPDATE run
+SET badge_count         = (SELECT badge_count         FROM run_progress WHERE run_id = run.id),
+    current_location_id = (SELECT current_location_id FROM run_progress WHERE run_id = run.id),
+    progress_updated_at = (SELECT updated_at           FROM run_progress WHERE run_id = run.id)
+WHERE EXISTS (SELECT 1 FROM run_progress WHERE run_id = run.id);
+```
+
+**Rationale**: `run_progress` is always a strict 1:1 record with `run`. Every page that
+needs badge count or current location must JOIN or do a second query anyway. Merging
+eliminates that JOIN from `RunContextMiddleware`, `ShowProgress`, `UpdateProgress`, and
+the run summary loader — the most frequently executed queries in the app.
+
+**Handler impact**: `internal/handlers/progress.go` `UpdateProgress`, `ShowProgress`, and
+`internal/handlers/middleware.go` `RunContextMiddleware` — replace
+`SELECT ... FROM run_progress WHERE run_id = ?` with columns on `run`.
+
+### SC-003 · Merge `run_flag` + `run_rule` + `rule_def` (3 → 1)
+
+**Tables removed**: `run_flag`, `run_rule`, `rule_def`
+
+**New table**: `run_setting`
+
+```sql
+-- 015_merge_run_settings.sql
+
+CREATE TABLE IF NOT EXISTS run_setting (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES run(id),
+    type   TEXT NOT NULL CHECK(type IN ('flag','rule')),
+    key    TEXT NOT NULL,
+    value  TEXT NOT NULL DEFAULT 'true',
+    UNIQUE(run_id, type, key)
+);
+
+-- Migrate flags
+INSERT INTO run_setting (run_id, type, key, value)
+SELECT run_id, 'flag', key, value FROM run_flag;
+
+-- Migrate rules (enabled=1 only; disabled rules are the default state)
+INSERT INTO run_setting (run_id, type, key, value)
+SELECT rr.run_id, 'rule', rd.key, rr.params_json
+FROM run_rule rr
+JOIN rule_def rd ON rd.id = rr.rule_def_id
+WHERE rr.enabled = 1;
+```
+
+**Rationale**: `run_flag` stores boolean feature flags; `run_rule` stores enabled game
+rules with a JSON params blob; `rule_def` is a lookup table referenced only to get the
+string key. All three are per-run key/value config. A `type` discriminator column is
+sufficient to distinguish them. The `rule_def` catalogue is replaced by the application
+already knowing the set of valid rule keys — they are already hard-coded in
+`internal/handlers/rules.go`.
+
+**Handler impact**: `internal/handlers/rules.go`, `internal/handlers/loaders.go`
+(`loadFlags`), and `RunContextMiddleware` — replace the three-table JOINs with:
+```sql
+SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'rule'
+SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'
+```
+
+---
+
 ## Migration Plan
 
-Steps 1–2 are a hard dependency for all others. Steps 3–10 are independent after step 2.
+### Phase 1 — Data Continuity
+
+Steps 1–2 are a hard dependency for all others. Steps 3–11 are independent after step 2.
 
 | # | File | Action |
 |---|---|---|
@@ -299,7 +588,36 @@ Steps 1–2 are a hard dependency for all others. Steps 3–10 are independent a
 | 8 | `internal/handlers/pages.go` | Add `CaughtLevel *int`, `AcquisitionType string` to `BoxEntry` |
 | 9 | `templates/box.html` | Render acquisition badge; show caught level when it differs from current level |
 | 10 | `templates/routes.html` | Display `acquisition_type` label in Outcome column |
-| 11 | Tests | Update `bootstrapProgressDB` schema in `progress_routes_test.go`; add test for upsert-or-merge in `LogEncounter` |
+| 11 | Tests | Update `bootstrapProgressDB` schema; add upsert-or-merge test for `LogEncounter` |
+
+### Phase 1b — Coach Display Improvements
+
+No schema dependency. Can run in parallel with Phase 1 steps 3–11.
+
+| # | File | Action |
+|---|---|---|
+| 1b-1 | `internal/handlers/coach.go` | Deduplicate acquisitions by species+location; aggregate level range (CD-001) |
+| 1b-2 | `templates/coach.html` | Remove Method column from Available Pokémon table; rename Levels → Level Range |
+| 1b-3 | `internal/legality/moves.go` | `annotateEvoNotes` — always show evo levels, remove ↑/↓ arrows (CD-003) |
+| 1b-4 | `internal/legality/moves.go` | New `appendEvoExclusiveMoves` — add evo-exclusive moves to CoachMoves output (CD-004) |
+| 1b-5 | `templates/coach.html` | Style `evo-exclusive` rows distinctly in Party Moves table |
+| 1b-6 | Tests | Add test for evo-exclusive move inclusion; test deduplication of acquisitions |
+
+### Phase 2 — Schema Consolidation
+
+Depends on Phase 1 complete. SC-001, SC-002, SC-003 are independent of each other.
+
+| # | File | Action |
+|---|---|---|
+| 12 | `migrations/013_merge_pokemon_tables.sql` | Create `pokemon`; migrate data from 5 tables; drop old tables |
+| 13 | `migrations/014_merge_run_progress.sql` | Add progress columns to `run`; migrate data; drop `run_progress` |
+| 14 | `migrations/015_merge_run_settings.sql` | Create `run_setting`; migrate flags + rules; drop `run_flag`, `run_rule`, `rule_def` |
+| 15 | `internal/db/migrate.go` | Register migrations 013–015; bump max version to 15 |
+| 16 | `internal/pokeapi/` | Update all seeders to write to `pokemon` instead of `pokemon_form`/`pokemon_species`/etc. |
+| 17 | `internal/handlers/` | Update all queries referencing removed tables (see SC-001–SC-003 handler impact notes) |
+| 18 | `internal/legality/` | Update all queries referencing `pokemon_form`, `pokemon_species`, `pokemon_type`, `pokemon_stats` |
+| 19 | `docs/prds/schema.md` | Rewrite schema section to reflect 18-table target |
+| 20 | Tests | Update all test bootstrap schemas; verify legality engine passes against new table names |
 
 ---
 
@@ -317,10 +635,16 @@ Steps 1–2 are a hard dependency for all others. Steps 3–10 are independent a
 - **Level editing on existing Team Pokémon** — DC-004 removes the accidental level
   overwrite but does not add an explicit "update level" flow. If a player genuinely wants
   to record a level-up, the Routes page (or a future level-up log) is the correct place.
+- **Further normalisation of `encounter` or `learnset_entry`** — those tables are already
+  well-structured and are query targets, not consolidation candidates.
+- **`in_game_trade` and `shop_item`** — these are small reference tables with no
+  duplication; they remain as-is.
 
 ---
 
 ## Acceptance Criteria
+
+### Phase 1
 
 1. Logging Moltres caught at level 50 on Routes, then assigning it to the Team at level 1,
    results in:
@@ -335,3 +659,29 @@ Steps 1–2 are a hard dependency for all others. Steps 3–10 are independent a
    (verified by `SELECT acquisition_type, COUNT(*) FROM run_pokemon GROUP BY 1`).
 5. All existing handler tests pass; new test for the upsert-or-merge path in `LogEncounter`
    (Team-first, Routes-second) passes.
+
+### Phase 1b
+
+6. The Available Pokémon table on Coach shows one row per distinct species+location
+   regardless of how many encounter methods exist at that location. Level column shows
+   the full range (e.g., "Lv 25–30").
+7. The Party Moves table for Bulbasaur Lv 5 does not show moves with `level_learned <= 5`.
+8. The Evo column for a move like "Razor Leaf" on Bulbasaur shows both "Ivysaur Lv20 ·
+   Venusaur Lv20" — not just one evolution, and no ↑/↓ arrows.
+9. The Party Moves table for Bulbasaur includes moves exclusive to Ivysaur and Venusaur
+   (e.g., "Petal Dance") with a `LearnMethod` of `"evo-exclusive"` and the Evo column
+   showing which evolution learns it and at what level.
+10. Evo-exclusive moves are visually distinct from the current form's moves in the template.
+
+### Phase 2
+
+6. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` returns 18 (down from 25) after
+   all three consolidation migrations are applied.
+7. All legality queries (`LegalAcquisitions`, `LegalMoves`, `LegalItems`, `EvolutionOptions`)
+   return identical results before and after the migration on a copy of the production DB.
+8. The PokeAPI seeder successfully hydrates a fresh DB (no pre-existing data) using the new
+   `pokemon` table — all species, types, stats, and abilities are present after seeding.
+9. `run_progress` table is absent; `badge_count` and `current_location_id` are columns on
+   `run` and `RunContextMiddleware` populates them without a second query.
+10. `run_flag`, `run_rule`, and `rule_def` tables are absent; `run_setting` contains all
+    migrated rows; Nuzlocke and all other rules behave identically in the UI.

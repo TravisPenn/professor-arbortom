@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowTeam renders GET /runs/:run_id/team — compact overview, no heavy selects.
@@ -172,8 +172,8 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 		var pkmnID int
 		db.QueryRow(`SELECT id FROM run_pokemon WHERE run_id = ? AND form_id = ? AND is_alive = 1 ORDER BY id LIMIT 1`, run.ID, formID).Scan(&pkmnID) //nolint:errcheck
 		if pkmnID == 0 {
-			res, err2 := db.Exec(`INSERT INTO run_pokemon (run_id, form_id, level, is_alive, in_party, party_slot, moves_json, held_item_id) VALUES (?, ?, ?, 1, 1, ?, ?, ?)`,
-				run.ID, formID, level, slot, string(movesJSON), heldPtr)
+			res, err2 := db.Exec(`INSERT INTO run_pokemon (run_id, form_id, level, caught_level, acquisition_type, is_alive, in_party, party_slot, moves_json, held_item_id) VALUES (?, ?, ?, ?, 'manual', 1, 1, ?, ?, ?)`,
+				run.ID, formID, level, level, slot, string(movesJSON), heldPtr)
 			if err2 != nil {
 				respondError(c, err2)
 				return
@@ -181,8 +181,8 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 			newID, _ := res.LastInsertId()
 			pkmnID = int(newID)
 		}
-		if _, err := db.Exec(`UPDATE run_pokemon SET in_party = 1, party_slot = ?, level = ?, moves_json = ?, held_item_id = ? WHERE id = ?`,
-			slot, level, string(movesJSON), heldPtr, pkmnID); err != nil {
+		if _, err := db.Exec(`UPDATE run_pokemon SET in_party = 1, party_slot = ?, moves_json = ?, held_item_id = ? WHERE id = ?`,
+			slot, string(movesJSON), heldPtr, pkmnID); err != nil {
 			respondError(c, err)
 			return
 		}
@@ -213,6 +213,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 
 		query := `
 			SELECT rp.id, rp.form_id, ps.name, pf.form_name, rp.level,
+				rp.caught_level, rp.acquisition_type,
 				COALESCE(l.name, '') AS met_location, rp.is_alive
 			FROM run_pokemon rp
 			JOIN pokemon_form pf ON pf.id = rp.form_id
@@ -235,7 +236,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var e BoxEntry
 			var alive int
-			if err := rows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.MetLocation, &alive); err != nil {
+			if err := rows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.CaughtLevel, &e.AcquisitionType, &e.MetLocation, &alive); err != nil {
 				continue
 			}
 			e.IsAlive = alive == 1
