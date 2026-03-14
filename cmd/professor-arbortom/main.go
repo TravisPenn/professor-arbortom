@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -10,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	pokemondata "github.com/TravisPenn/professor-arbortom/data"
 	"github.com/TravisPenn/professor-arbortom/internal/db"
 	"github.com/TravisPenn/professor-arbortom/internal/handlers"
@@ -19,6 +18,8 @@ import (
 	"github.com/TravisPenn/professor-arbortom/internal/services"
 	pokestatic "github.com/TravisPenn/professor-arbortom/static"
 	poketemplates "github.com/TravisPenn/professor-arbortom/templates"
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 // Version is injected at build time via -ldflags "-X main.Version=<sha>"
@@ -59,14 +60,18 @@ func main() {
 	// PokeAPI client
 	pokeClient := pokeapi.New(database, dbPath)
 
-	// ZeroClaw service
-	zcGateway := os.Getenv("ZEROCLAW_GATEWAY")
-	zcAgent := os.Getenv("ZEROCLAW_AGENT")
-	zc := services.NewZeroClaw(zcGateway, zcAgent)
+	// AI Coach client
+	coachHost := os.Getenv("COACH_HOST")
+	coachModel := os.Getenv("COACH_MODEL")
+	if coachHost != "" && coachModel == "" {
+		coachModel = "qwen2.5:3b"
+	}
+	coachPrompt := os.Getenv("COACH_SYSTEM_PROMPT")
+	zc := services.NewCoachClient(coachHost, coachModel, coachPrompt)
 
-	// SEC-005: Validate ZeroClaw config at startup to prevent SSRF.
+	// SEC-005: Validate AI Coach config at startup to prevent SSRF.
 	if err := zc.ValidateConfig(); err != nil {
-		log.Fatalf("zeroclaw config: %v", err)
+		log.Fatalf("coach config: %v", err)
 	}
 
 	// Parse templates
@@ -84,6 +89,13 @@ func main() {
 				s[i] = i
 			}
 			return s
+		},
+		"toJSON": func(v any) (template.JS, error) {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "", err
+			}
+			return template.JS(b), nil //nolint:gosec // data is server-controlled, not user input
 		},
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(poketemplates.FS, "*.html")
@@ -144,8 +156,8 @@ func main() {
 			run.POST("/box/:entry_id/faint", handlers.MarkFainted(database))
 			run.POST("/box/:entry_id/revive", handlers.MarkRevived(database))
 			run.POST("/box/:entry_id/evolve", handlers.EvolveBox(database, pokeClient))
-			run.GET("/routes", handlers.ShowRoutes(database))
-			run.POST("/routes", handlers.LogEncounter(database))
+			run.GET("/routes", handlers.ShowRoutes(database, pokeClient))
+			run.POST("/routes", handlers.LogEncounter(database, pokeClient))
 			run.GET("/rules", handlers.ShowRules(database))
 			run.POST("/rules", handlers.UpdateRules(database))
 			run.GET("/coach", handlers.ShowCoach(database, zc))

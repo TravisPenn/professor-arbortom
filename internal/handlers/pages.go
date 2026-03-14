@@ -38,12 +38,13 @@ type RunsPage struct {
 	ArchivedRuns      []RunSummary
 	Versions          []VersionOption
 	StartersByVersion map[int][]StarterOption
+	SelectedVersionID int // re-populates version select after a validation error
 }
 
 // StarterOption represents a choosable starter Pokémon for a game version.
 type StarterOption struct {
-	FormID      int
-	SpeciesName string // capitalized, e.g. "Bulbasaur"
+	FormID      int    `json:"id"`
+	SpeciesName string `json:"name"` // capitalized, e.g. "Bulbasaur"
 }
 
 type RunSummary struct {
@@ -172,12 +173,21 @@ type BoxEntry struct {
 
 // ─── Routes Log ───────────────────────────────────────────────────────────────
 
+// EncounterOption holds a catchable species and its level range at a location.
+type EncounterOption struct {
+	Name     string `json:"name"`
+	MinLevel int    `json:"min_level"`
+	MaxLevel int    `json:"max_level"`
+}
+
 type RoutesPage struct {
 	BasePage
-	Log              []RouteEntry
-	Locations        []LocationOption
-	NuzlockeOn       bool
-	DuplicateWarning *DuplicateWarning
+	Log                  []RouteEntry
+	Locations            []LocationOption
+	EncountersByLocation map[int][]EncounterOption // keyed by location ID
+	NuzlockeOn           bool
+	DuplicateWarning     *DuplicateWarning
+	ValidationError      string
 	// Pre-filled form values on re-render
 	FormLocationID int
 	FormSpecies    string
@@ -230,7 +240,7 @@ type OverviewPage struct {
 	// Rules
 	ActiveRules []string
 	// Coach
-	ZeroClawAvailable bool
+	CoachAvailable bool
 }
 
 type OverviewSlot struct {
@@ -243,17 +253,17 @@ type OverviewSlot struct {
 
 type CoachPage struct {
 	BasePage
-	ZeroClawAvailable bool
-	Acquisitions      []legality.Acquisition
-	Trades            []TradeOption
-	PartyMoves        []PartyMoveSummary
-	LegalItems        []ItemOption
-	CoachAnswer       *CoachAnswer
-	PlayerQuestion    string
-	TeamInsights      *TeamInsights
+	CoachAvailable bool
+	Acquisitions   []legality.Acquisition
+	Trades         []TradeOption
+	PartyMoves     []PartyMoveSummary
+	LegalItems     []ItemOption
+	CoachAnswer    *CoachAnswer
+	PlayerQuestion string
+	TeamInsights   *TeamInsights
 }
 
-// TeamInsights holds pre-computed analysis rendered in the coach panel regardless of ZeroClaw.
+// TeamInsights holds pre-computed analysis rendered in the coach panel regardless of AI coach availability.
 type TeamInsights struct {
 	Members        []PartyDetailPayload
 	Weaknesses     []legality.TypeThreat
@@ -291,7 +301,7 @@ type PartyMoveSummary struct {
 }
 
 // CoachAnswer holds the LLM-generated coach response.
-// SECURITY BOUNDARY (SEC-018): Text comes from the ZeroClaw LLM gateway and
+// SECURITY BOUNDARY (SEC-018): Text comes from the AI Coach LLM host and
 // must NEVER be rendered with template.HTML, safeHTML, or any unescaping
 // function. Go's html/template auto-escapes it safely. If rich rendering
 // (Markdown) is ever needed, use a sanitizing renderer (e.g. bluemonday).

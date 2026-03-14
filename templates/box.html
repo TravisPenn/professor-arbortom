@@ -45,11 +45,11 @@
         </td>
         <td>
           {{if .IsAlive}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" class="form-inline">
             <button type="submit" class="btn btn-sm btn-danger">Mark Fainted</button>
           </form>
           {{if .Evolutions}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" class="form-inline">
             {{if eq (len .Evolutions) 1}}
             <input type="hidden" name="to_form_id" value="{{(index .Evolutions 0).ToFormID}}">
             <button type="submit" class="btn btn-sm">Evolve → {{(index .Evolutions 0).ToSpeciesName}}</button>
@@ -64,7 +64,7 @@
           </form>
           {{end}}
           {{else if not $.NuzlockeOn}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" class="form-inline">
             <button type="submit" class="btn btn-sm">Revive</button>
           </form>
           {{end}}

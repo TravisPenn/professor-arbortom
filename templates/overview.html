@@ -118,7 +118,7 @@
         <h2>Coach</h2>
         <a href="/runs/{{.RunContext.ID}}/coach" class="btn btn-sm">Open</a>
       </div>
-      {{if .ZeroClawAvailable}}
+      {{if .CoachAvailable}}
       <p class="badge-available overview-coach-status">● AI available</p>
       {{else}}
       <p class="muted overview-coach-status">AI offline — coach unavailable</p>

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 )
 
@@ -200,7 +200,7 @@ func newRoutesRouter(db *sql.DB, run models.Run) *gin.Engine {
 	r := gin.New()
 	r.POST("/runs/:run_id/routes",
 		injectRunContext(run, models.RunProgress{RunID: run.ID}),
-		LogEncounter(db),
+		LogEncounter(db, nil),
 	)
 	return r
 }
