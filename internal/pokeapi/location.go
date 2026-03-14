@@ -2,6 +2,7 @@ package pokeapi
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -78,6 +79,11 @@ func (c *Client) EnsureLocationEncounters(db *sql.DB, locationAreaID, versionID 
 	// ── Phase 1: fetch area from PokeAPI ─────────────────────────────────────
 	var area locationAreaResponse
 	if err := c.get(fmt.Sprintf("%s/location-area/%d", baseURL, locationAreaID), &area); err != nil {
+		// 404 means PokeAPI has no data for this area — mark it cached so the
+		// hydration counter counts it as done and we never retry it.
+		if errors.Is(err, ErrNotFound) {
+			_ = c.markCached("location-area", locationAreaID)
+		}
 		return err
 	}
 

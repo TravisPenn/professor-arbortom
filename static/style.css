@@ -301,6 +301,12 @@ main {
 
 .row-fainted td { color: #999; text-decoration: line-through; }
 .box-filter { margin-bottom: 1rem; }
+.badge-info { background: #3498db; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: 0.75em; }
+
+/* ── Coach evo-exclusive rows ───────────────────────────────────────────── */
+
+.row-evo-exclusive { background: #f8f4ff; }
+.row-evo-exclusive td { font-style: italic; color: #777; }
 
 /* ── Route Log ────────────────────────────────────────────────────────────── */
 

@@ -10,7 +10,7 @@ import (
 // loadRunSummaries returns all runs (active and archived) sorted by updated_at DESC.
 // The caller splits them by rs.Archived.
 func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
-	rows, err := db.Query(`
+	query := `
 		SELECT
 			r.id, r.name, u.name AS user_name, gv.name AS version_name,
 			COALESCE(rp.badge_count, 0) AS badge_count,
@@ -21,7 +21,22 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 		JOIN game_version gv ON gv.id = r.version_id
 		LEFT JOIN run_progress rp ON rp.run_id = r.id
 		ORDER BY updated_at DESC
-	`)
+	`
+	if columnExists(db, "run", "badge_count") && columnExists(db, "run", "progress_updated_at") {
+		query = `
+			SELECT
+				r.id, r.name, u.name AS user_name, gv.name AS version_name,
+				COALESCE(r.badge_count, 0) AS badge_count,
+				COALESCE(r.progress_updated_at, r.created_at) AS updated_at,
+				COALESCE(r.archived_at, '') AS archived_at
+			FROM run r
+			JOIN user u ON u.id = r.user_id
+			JOIN game_version gv ON gv.id = r.version_id
+			ORDER BY updated_at DESC
+		`
+	}
+
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +51,20 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 		}
 		rs.Archived = archivedAt != ""
 
-		// Load active rules for this run
-		ruleRows, err := db.Query(`
+		// Load active rules for this run. Prefer run_setting (SC-003), fallback legacy tables.
+		ruleQuery := `
 			SELECT rd.key FROM run_rule rr
 			JOIN rule_def rd ON rd.id = rr.rule_def_id
 			WHERE rr.run_id = ? AND rr.enabled = 1
-		`, rs.ID)
+		`
+		if tableExists(db, "run_setting") {
+			ruleQuery = `
+				SELECT key FROM run_setting
+				WHERE run_id = ? AND type = 'rule'
+			`
+		}
+
+		ruleRows, err := db.Query(ruleQuery, rs.ID)
 		if err == nil {
 			defer ruleRows.Close()
 			for ruleRows.Next() {
@@ -186,9 +209,11 @@ var gen3FlagDefs = []FlagDef{
 }
 
 func loadFlags(db *sql.DB, runID, versionID int) ([]FlagDef, map[string]bool, error) {
-	rows, err := db.Query(
-		`SELECT key, value FROM run_flag WHERE run_id = ?`, runID,
-	)
+	query := `SELECT key, value FROM run_flag WHERE run_id = ?`
+	if tableExists(db, "run_setting") {
+		query = `SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'`
+	}
+	rows, err := db.Query(query, runID)
 	if err != nil {
 		return gen3FlagDefs, map[string]bool{}, err
 	}
@@ -228,8 +253,8 @@ func loadRouteLog(db *sql.DB, runID int, nuzlockeOn bool) ([]RouteEntry, error) 
 		SELECT
 			COALESCE(l.name, 'unknown') AS loc_name,
 			ps.name AS species_name,
-			'caught' AS outcome,
-			rp.level,
+			rp.acquisition_type AS outcome,
+			COALESCE(rp.caught_level, rp.level) AS level,
 			rp.met_location_id
 		FROM run_pokemon rp
 		JOIN pokemon_form pf ON pf.id = rp.form_id
@@ -267,6 +292,19 @@ func loadRouteLog(db *sql.DB, runID int, nuzlockeOn bool) ([]RouteEntry, error) 
 		var locID *int
 		if err := rows.Scan(&e.LocationName, &e.SpeciesName, &e.Outcome, &e.Level, &locID); err != nil {
 			continue
+		}
+		// Map acquisition_type to human label.
+		switch e.Outcome {
+		case "wild":
+			e.Outcome = "Caught"
+		case "starter":
+			e.Outcome = "Starter"
+		case "gift":
+			e.Outcome = "Gift"
+		case "trade":
+			e.Outcome = "Trade"
+		case "manual":
+			e.Outcome = "Added"
 		}
 		if nuzlockeOn && locID != nil && duplicateLocations[*locID] > 1 {
 			e.IsDuplicate = true

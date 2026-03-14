@@ -103,6 +103,11 @@ func walkChain(tx *sql.Tx, link chainLink) error {
 			// the species ID, so this is safe.
 			tx.Exec(`INSERT OR IGNORE INTO pokemon_species (id, name) VALUES (?, ?)`, toSpeciesID, nextLink.Species.Name)                //nolint:errcheck
 			tx.Exec(`INSERT OR IGNORE INTO pokemon_form (id, species_id, form_name) VALUES (?, ?, 'default')`, toSpeciesID, toSpeciesID) //nolint:errcheck
+			tx.Exec(`
+				INSERT OR IGNORE INTO pokemon
+					(id, species_name, form_name, type1, hp, attack, defense, sp_attack, sp_defense, speed)
+				VALUES (?, ?, 'default', 'normal', 0, 0, 0, 0, 0, 0)
+			`, toSpeciesID, nextLink.Species.Name) //nolint:errcheck
 			toFormID = toSpeciesID
 		} else if err != nil {
 			return err

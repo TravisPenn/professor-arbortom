@@ -161,14 +161,16 @@ type BoxPage struct {
 }
 
 type BoxEntry struct {
-	ID          int
-	FormID      int
-	SpeciesName string
-	FormName    string
-	Level       int
-	MetLocation string
-	IsAlive     bool
-	Evolutions  []legality.Evolution
+	ID              int
+	FormID          int
+	SpeciesName     string
+	FormName        string
+	Level           int
+	CaughtLevel     *int
+	MetLocation     string
+	AcquisitionType string
+	IsAlive         bool
+	Evolutions      []legality.Evolution
 }
 
 // ─── Routes Log ───────────────────────────────────────────────────────────────

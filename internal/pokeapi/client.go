@@ -7,6 +7,7 @@ package pokeapi
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +24,11 @@ var gen3VersionGroups = map[int]struct{}{
 }
 
 const baseURL = "https://pokeapi.co/api/v2"
+
+// ErrNotFound is returned by get() when the PokeAPI responds with 404.
+// Callers can check errors.Is(err, ErrNotFound) to distinguish a permanently
+// missing resource from a transient network error.
+var ErrNotFound = errors.New("pokeapi: not found (404)")
 
 // Client wraps the PokeAPI HTTP client and an SQLite connection for caching.
 type Client struct {
@@ -107,7 +113,7 @@ func (c *Client) get(url string, dest interface{}) error {
 	log.Printf("[pokeapi] %d %s (%s)", resp.StatusCode, url, time.Since(start).Round(time.Millisecond))
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("pokeapi: %s not found (404)", url)
+		return fmt.Errorf("pokeapi: %s not found (404): %w", url, ErrNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("pokeapi: %s returned %d", url, resp.StatusCode)

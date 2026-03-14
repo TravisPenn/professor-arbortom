@@ -188,7 +188,12 @@ func bootstrapRoutesDB(t *testing.T) *sql.DB {
 	hMustExec(t, db, `CREATE TABLE run_pokemon (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		run_id INTEGER, form_id INTEGER, level INTEGER,
-		met_location_id INTEGER, is_alive INTEGER DEFAULT 1
+		caught_level INTEGER,
+		acquisition_type TEXT NOT NULL DEFAULT 'manual'
+			CHECK(acquisition_type IN ('starter','wild','gift','trade','manual')),
+		met_location_id INTEGER, is_alive INTEGER DEFAULT 1,
+		in_party INTEGER DEFAULT 0, party_slot INTEGER,
+		moves_json TEXT DEFAULT '[]', held_item_id INTEGER
 	)`)
 	hMustExec(t, db, `INSERT INTO pokemon_species VALUES (19, 'rattata')`)
 	hMustExec(t, db, `INSERT INTO pokemon_form VALUES (19, 19, 'default')`)
