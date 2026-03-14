@@ -129,6 +129,15 @@ main {
   color: #78350f;
 }
 
+.banner-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  color: #7f1d1d;
+}
+
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
 .btn {
@@ -550,3 +559,10 @@ main {
 }
 
 .starter-error { color: #dc2626; font-size: 0.85rem; margin-top: 0.3rem; display: none; }
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+
+.form-hint { font-size: 0.85rem; color: #6b7280; margin-top: 0.2rem; }
+
+.hidden { display: none !important; }
+.form-inline { display: inline; }

@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowCoach renders GET /runs/:run_id/coach
-func ShowCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+func ShowCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		page, err := buildCoachPage(c, db, run.ID, zc.IsAvailable())
@@ -25,7 +25,7 @@ func ShowCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 }
 
 // QueryCoach handles POST /runs/:run_id/coach
-func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+func QueryCoach(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		question := c.PostForm("question")
@@ -64,7 +64,7 @@ func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 				Truncated: response.Truncated,
 			}
 		} else {
-			page.ZeroClawAvailable = false
+			page.CoachAvailable = false
 		}
 
 		c.HTML(http.StatusOK, "coach.html", page)
@@ -154,12 +154,12 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 			ActiveNav:  "coach",
 			RunContext: buildRunContext(c),
 		},
-		ZeroClawAvailable: available,
-		Acquisitions:      acqs,
-		Trades:            tradeOptions,
-		PartyMoves:        party,
-		LegalItems:        itemOptions,
-		TeamInsights:      insights,
+		CoachAvailable: available,
+		Acquisitions:   acqs,
+		Trades:         tradeOptions,
+		PartyMoves:     party,
+		LegalItems:     itemOptions,
+		TeamInsights:   insights,
 	}, nil
 }
 
@@ -327,7 +327,7 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 	}, nil
 }
 
-// buildCoachPayload assembles the enriched CoachPayload for ZeroClaw (COACH-006).
+// buildCoachPayload assembles the enriched CoachPayload for AI Coach (COACH-006).
 // It reuses the TeamInsights already computed for the page to avoid extra DB queries.
 func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (services.CoachPayload, error) {
 	var versionName string

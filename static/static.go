@@ -4,5 +4,5 @@ package static
 import "embed"
 
 // FS holds all static asset files.
-//go:embed style.css
+//go:embed style.css runs.js routes.js
 var FS embed.FS

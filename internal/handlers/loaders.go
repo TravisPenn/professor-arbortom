@@ -137,6 +137,41 @@ func loadLocations(db *sql.DB, versionID int) ([]LocationOption, error) {
 	return locs, rows.Err()
 }
 
+// loadEncountersByLocation returns a map from location ID to a deduplicated,
+// sorted list of catchable Pokémon (with aggregate level range) for versionID.
+// min_level == max_level indicates a fixed-level encounter (e.g. static legendary).
+func loadEncountersByLocation(db *sql.DB, versionID int) (map[int][]EncounterOption, error) {
+	rows, err := db.Query(`
+		SELECT e.location_id, ps.name, MIN(e.min_level), MAX(e.max_level)
+		FROM encounter e
+		JOIN pokemon_form pf ON pf.id = e.form_id
+		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN location l ON l.id = e.location_id
+		WHERE l.version_id = ?
+		GROUP BY e.location_id, ps.id
+		ORDER BY e.location_id, ps.name
+	`, versionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[int][]EncounterOption)
+	for rows.Next() {
+		var locID, minLvl, maxLvl int
+		var name string
+		if err := rows.Scan(&locID, &name, &minLvl, &maxLvl); err != nil {
+			return nil, err
+		}
+		result[locID] = append(result[locID], EncounterOption{
+			Name:     capitalizeVersion(name),
+			MinLevel: minLvl,
+			MaxLevel: maxLvl,
+		})
+	}
+	return result, rows.Err()
+}
+
 // gen3FlagDefs defines known story flags for all Gen 3 games.
 // These are displayed as checkboxes on the progress screen.
 var gen3FlagDefs = []FlagDef{

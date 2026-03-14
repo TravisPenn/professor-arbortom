@@ -184,7 +184,7 @@
       </section>
       {{end}}
 
-      {{if .ZeroClawAvailable}}
+      {{if .CoachAvailable}}
 
       <section class="coach-ask">
         <h2>Ask the Professor</h2>
@@ -215,7 +215,7 @@
       <div class="coach-unavailable">
         <h2>AI coaching unavailable</h2>
         <p>
-          Configure <code>ZEROCLAW_GATEWAY</code> in <code>.env</code> and restart
+          Configure <code>COACH_HOST</code> in <code>.env</code> and restart
           the service to enable the Professor AI coach.
         </p>
         <p>

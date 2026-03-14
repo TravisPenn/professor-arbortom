@@ -4,12 +4,13 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowRoutes renders GET /runs/:run_id/routes
-func ShowRoutes(db *sql.DB) gin.HandlerFunc {
+func ShowRoutes(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
@@ -28,18 +29,26 @@ func ShowRoutes(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		encounters, _ := loadEncountersByLocation(db, run.VersionID)
+
+		// Trigger background seeding if encounter data is not yet cached.
+		if pokeClient != nil {
+			pokeClient.GoEnsureAllEncounters(db, run.VersionID)
+		}
+
 		page := RoutesPage{
-			BasePage:   BasePage{PageTitle: "Routes", ActiveNav: "routes", RunContext: buildRunContext(c)},
-			Log:        log,
-			Locations:  locations,
-			NuzlockeOn: nuzlockeOn,
+			BasePage:             BasePage{PageTitle: "Routes", ActiveNav: "routes", RunContext: buildRunContext(c)},
+			Log:                  log,
+			Locations:            locations,
+			EncountersByLocation: encounters,
+			NuzlockeOn:           nuzlockeOn,
 		}
 		c.HTML(http.StatusOK, "routes.html", page)
 	}
 }
 
 // LogEncounter handles POST /runs/:run_id/routes
-func LogEncounter(db *sql.DB) gin.HandlerFunc {
+func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
@@ -57,12 +66,12 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Resolve form ID from species name (best-effort)
+		// Resolve form ID from species name (best-effort, case-insensitive).
 		var formID int
 		db.QueryRow(`
 			SELECT pf.id FROM pokemon_form pf
 			JOIN pokemon_species ps ON ps.id = pf.species_id
-			WHERE ps.name = ? LIMIT 1
+			WHERE LOWER(ps.name) = LOWER(?) LIMIT 1
 		`, speciesName).Scan(&formID) //nolint:errcheck
 
 		// Nuzlocke duplicate check
@@ -83,6 +92,7 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 
 				log, _ := loadRouteLog(db, run.ID, nuzlockeOn)
 				locations, _ := loadLocations(db, run.VersionID)
+				encounters, _ := loadEncountersByLocation(db, run.VersionID)
 
 				page := RoutesPage{
 					BasePage: BasePage{
@@ -90,9 +100,10 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 						ActiveNav:  "routes",
 						RunContext: buildRunContext(c),
 					},
-					Log:        log,
-					Locations:  locations,
-					NuzlockeOn: nuzlockeOn,
+					Log:                  log,
+					Locations:            locations,
+					EncountersByLocation: encounters,
+					NuzlockeOn:           nuzlockeOn,
 					DuplicateWarning: &DuplicateWarning{
 						LocationName:  locName,
 						PreviousCatch: prevSpecies,
@@ -105,6 +116,27 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 				c.HTML(http.StatusOK, "routes.html", page)
 				return
 			}
+		}
+
+		// Validate level before attempting the DB insert.
+		if outcome == "caught" && (level < 1 || level > 100) {
+			log, _ := loadRouteLog(db, run.ID, nuzlockeOn)
+			locations, _ := loadLocations(db, run.VersionID)
+			encounters, _ := loadEncountersByLocation(db, run.VersionID)
+
+			page := RoutesPage{
+				BasePage:             BasePage{PageTitle: "Routes", ActiveNav: "routes", RunContext: buildRunContext(c)},
+				Log:                  log,
+				Locations:            locations,
+				EncountersByLocation: encounters,
+				NuzlockeOn:           nuzlockeOn,
+				ValidationError:      "Level is required (1–100) when catching a Pokémon.",
+				FormLocationID:       locationID,
+				FormSpecies:          speciesName,
+				FormOutcome:          outcome,
+			}
+			c.HTML(http.StatusUnprocessableEntity, "routes.html", page)
+			return
 		}
 
 		// Insert box entry if caught
@@ -122,6 +154,11 @@ func LogEncounter(db *sql.DB) gin.HandlerFunc {
 				respondError(c, err)
 				return
 			}
+		}
+
+		// Trigger background encounter seeding for this specific location.
+		if locationID > 0 && pokeClient != nil {
+			pokeClient.GoEnsureLocationEncounters(db, locationID, run.VersionID)
 		}
 
 		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/routes")

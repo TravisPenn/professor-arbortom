@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 // apiErrorMsg returns err.Error() in debug mode, generic message in release.
@@ -21,7 +21,7 @@ func apiErrorMsg(err error) string {
 }
 
 // Health returns service status.
-func Health(db *sql.DB, zc *services.ZeroClaw, version string) gin.HandlerFunc {
+func Health(db *sql.DB, zc *services.CoachClient, version string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		dbStatus := "ok"
 		if err := db.Ping(); err != nil {
@@ -34,10 +34,10 @@ func Health(db *sql.DB, zc *services.ZeroClaw, version string) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":   "ok",
-			"db":       dbStatus,
-			"zeroclaw": zcStatus,
-			"version":  version,
+			"status":  "ok",
+			"db":      dbStatus,
+			"coach":   zcStatus,
+			"version": version,
 		})
 	}
 }
