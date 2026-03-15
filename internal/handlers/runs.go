@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 // RedirectToRuns is the root handler: redirects / → /runs
@@ -114,6 +114,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 				},
 				Versions:          versions,
 				StartersByVersion: starters,
+				SelectedVersionID: versionID,
 			}
 			c.HTML(http.StatusUnprocessableEntity, "runs.html", page)
 			return
@@ -160,8 +161,9 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Insert starter into run_pokemon: slot 1, level 5, on the party.
 		if _, err := db.Exec(
-			`INSERT INTO run_pokemon (run_id, form_id, level, is_alive, in_party, party_slot, moves_json)
-			 VALUES (?, ?, 5, 1, 1, 1, '[]')`,
+			`INSERT INTO run_pokemon (run_id, form_id, level, caught_level, acquisition_type,
+			 is_alive, in_party, party_slot, moves_json)
+			 VALUES (?, ?, 5, 5, 'starter', 1, 1, 1, '[]')`,
 			runID, starterFormID,
 		); err != nil {
 			respondError(c, err)
@@ -188,7 +190,7 @@ func ShowRun(c *gin.Context) {
 }
 
 // ShowOverview renders GET /runs/:run_id/overview — a single-page summary dashboard.
-func ShowOverview(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		progress := c.MustGet("progress").(models.RunProgress)
@@ -270,7 +272,7 @@ func ShowOverview(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 			BoxFainted:          fainted,
 			RecentRoutes:        recentRoutes,
 			ActiveRules:         ruleKeys,
-			ZeroClawAvailable:   zc.IsAvailable(),
+			CoachAvailable:      zc.IsAvailable(),
 		}
 		c.HTML(http.StatusOK, "overview.html", page)
 	}

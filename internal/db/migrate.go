@@ -7,7 +7,7 @@ import (
 	"github.com/TravisPenn/professor-arbortom/migrations"
 )
 
-const currentVersion = 10
+const currentVersion = 15
 
 // Migrate checks PRAGMA user_version and applies pending migrations.
 // Safe to call on every startup.
@@ -100,7 +100,57 @@ func Migrate(db *sql.DB) error {
 		if err := applyMigration(db, "010_current_moves.sql"); err != nil {
 			return fmt.Errorf("db: migration 010: %w", err)
 		}
-		return setUserVersion(db, 10)
+		if err := setUserVersion(db, 10); err != nil {
+			return err
+		}
+		version = 10
+	}
+
+	if version == 10 {
+		if err := applyMigration(db, "011_static_encounters.sql"); err != nil {
+			return fmt.Errorf("db: migration 011: %w", err)
+		}
+		if err := setUserVersion(db, 11); err != nil {
+			return err
+		}
+		version = 11
+	}
+
+	if version == 11 {
+		if err := applyMigration(db, "012_pokemon_acquisition.sql"); err != nil {
+			return fmt.Errorf("db: migration 012: %w", err)
+		}
+		if err := setUserVersion(db, 12); err != nil {
+			return err
+		}
+		version = 12
+	}
+
+	if version == 12 {
+		if err := applyMigration(db, "013_merge_pokemon_tables.sql"); err != nil {
+			return fmt.Errorf("db: migration 013: %w", err)
+		}
+		if err := setUserVersion(db, 13); err != nil {
+			return err
+		}
+		version = 13
+	}
+
+	if version == 13 {
+		if err := applyMigration(db, "014_merge_run_progress.sql"); err != nil {
+			return fmt.Errorf("db: migration 014: %w", err)
+		}
+		if err := setUserVersion(db, 14); err != nil {
+			return err
+		}
+		version = 14
+	}
+
+	if version == 14 {
+		if err := applyMigration(db, "015_merge_run_settings.sql"); err != nil {
+			return fmt.Errorf("db: migration 015: %w", err)
+		}
+		return setUserVersion(db, 15)
 	}
 
 	return fmt.Errorf("db: unknown user_version %d", version)

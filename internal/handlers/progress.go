@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowProgress renders GET /runs/:run_id/progress
@@ -115,8 +115,22 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			return
 		}
 
+		// SC-002 compatibility: also persist progress onto run when columns exist.
+		if columnExists(db, "run", "badge_count") && columnExists(db, "run", "current_location_id") {
+			if _, err := db.Exec(`
+				UPDATE run
+				SET badge_count = ?,
+				    current_location_id = ?,
+				    progress_updated_at = datetime('now')
+				WHERE id = ?
+			`, badgeCount, locationID, run.ID); err != nil {
+				log.Printf("WARN: update run progress columns for run %d: %v", run.ID, err)
+			}
+		}
+
 		// Rebuild flags: present in POST array = true, absent = false
 		allFlags, _, _ := loadFlags(db, run.ID, run.VersionID)
+		hasRunSetting := tableExists(db, "run_setting")
 		for _, fd := range allFlags {
 			val := "false"
 			for _, f := range flags {
@@ -132,6 +146,16 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 				run.ID, fd.Key, val,
 			); err != nil {
 				log.Printf("WARN: write flag %s for run %d: %v", fd.Key, run.ID, err)
+			}
+
+			// SC-003 compatibility: mirror flags into run_setting when available.
+			if hasRunSetting {
+				if _, err := db.Exec(
+					`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'flag', ?, ?)`,
+					run.ID, fd.Key, val,
+				); err != nil {
+					log.Printf("WARN: write run_setting flag %s for run %d: %v", fd.Key, run.ID, err)
+				}
 			}
 		}
 

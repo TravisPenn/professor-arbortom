@@ -9,6 +9,12 @@
 <main>
   <h1>Route Log</h1>
 
+  {{if .ValidationError}}
+  <div class="banner-error">
+    ⚠ {{.ValidationError}}
+  </div>
+  {{end}}
+
   {{if .DuplicateWarning}}
   <div class="banner-warning">
     ⚠ Nuzlocke: you already caught a Pokémon on
@@ -31,9 +37,14 @@
     </div>
 
     <div class="form-row">
-      <label for="form_id">Pokémon seen</label>
-      <input type="text" id="form_id" name="form_id" placeholder="e.g. pidgey"
-             value="{{.FormSpecies}}">
+      <label>Pok&eacute;mon seen</label>
+      <select id="form_id_select" name="form_id" disabled class="hidden"
+              data-preselect="{{.FormSpecies}}">
+        <option value="">&mdash; select &mdash;</option>
+      </select>
+      <input type="text" id="form_id_text" name="form_id" disabled class="hidden"
+             placeholder="e.g. pidgey" value="{{.FormSpecies}}">
+      <span id="pokemon-hint" class="form-hint">Select a location first.</span>
     </div>
 
     <div class="form-row">
@@ -89,6 +100,8 @@
   <p class="empty-state">No encounters logged yet.</p>
   {{end}}
 </main>
+  <script id="encounters-data" type="application/json">{{.EncountersByLocation | toJSON}}</script>
+  <script src="/static/routes.js"></script>
 </body>
 </html>
 {{end}}

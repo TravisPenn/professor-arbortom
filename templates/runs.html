@@ -35,7 +35,7 @@
         <td>{{.UpdatedAt}}</td>
         <td class="run-actions">
           <a href="/runs/{{.ID}}/progress" class="btn btn-sm">Continue</a>
-          <form method="POST" action="/runs/{{.ID}}/archive" style="display:inline">
+          <form method="POST" action="/runs/{{.ID}}/archive" class="form-inline">
             <button type="submit" class="btn btn-sm" title="Archive this run">Archive</button>
           </form>
         </td>
@@ -70,7 +70,7 @@
           <td>{{.BadgeCount}}/8</td>
           <td>{{.UpdatedAt}}</td>
           <td>
-            <form method="POST" action="/runs/{{.ID}}/unarchive" style="display:inline">
+            <form method="POST" action="/runs/{{.ID}}/unarchive" class="form-inline">
               <button type="submit" class="btn btn-sm">Unarchive</button>
             </form>
           </td>
@@ -97,11 +97,11 @@
         <select id="version_id" name="version_id" required>
           <option value="">— select —</option>
           {{range .Versions}}
-          <option value="{{.ID}}">{{.Name}}</option>
+          <option value="{{.ID}}"{{if eq .ID $.SelectedVersionID}} selected{{end}}>{{.Name}}</option>
           {{end}}
         </select>
       </div>
-      <div class="form-row" id="starter-row" style="display:none">
+      <div class="form-row hidden" id="starter-row">
         <label>Starter Pokémon</label>
         <div class="starter-picker" id="starter-picker"></div>
         <div class="starter-error" id="starter-error">Please select a starter Pokémon.</div>
@@ -110,59 +110,8 @@
     </form>
   </section>
 
-  <script>
-  (function() {
-    const STARTERS = {
-      {{- range $vid, $opts := .StartersByVersion}}
-      "{{$vid}}": [{{range $i, $s := $opts}}{{if $i}},{{end}}{"id":{{$s.FormID}},"name":"{{$s.SpeciesName}}"}{{end}}],
-      {{- end}}
-    };
-
-    const versionSelect = document.getElementById('version_id');
-    const starterRow    = document.getElementById('starter-row');
-    const starterPicker = document.getElementById('starter-picker');
-    const starterError  = document.getElementById('starter-error');
-
-    function renderStarters(versionId) {
-      const starters = STARTERS[String(versionId)] || [];
-      starterPicker.innerHTML = '';
-      starterError.style.display = 'none';
-      if (!starters.length) { starterRow.style.display = 'none'; return; }
-      starterRow.style.display = '';
-      starters.forEach(function(s) {
-        const label = document.createElement('label');
-        label.className = 'starter-card';
-        const radio = document.createElement('input');
-        radio.type  = 'radio';
-        radio.name  = 'starter_form_id';
-        radio.value = s.id;
-        radio.addEventListener('change', function() {
-          starterPicker.querySelectorAll('.starter-card').forEach(function(l) { l.classList.remove('selected'); });
-          label.classList.add('selected');
-          starterError.style.display = 'none';
-        });
-        label.appendChild(radio);
-        label.appendChild(document.createTextNode(' ' + s.name));
-        starterPicker.appendChild(label);
-      });
-    }
-
-    versionSelect.addEventListener('change', function(e) { renderStarters(e.target.value); });
-
-    document.getElementById('new-run-form').addEventListener('submit', function(e) {
-      if (starterRow.style.display !== 'none') {
-        const checked = starterPicker.querySelector('input[type=radio]:checked');
-        if (!checked) {
-          e.preventDefault();
-          starterError.style.display = '';
-        }
-      }
-    });
-
-    // Re-populate on page load (e.g. after a validation error re-render)
-    renderStarters(versionSelect.value);
-  })();
-  </script>
+  <script id="starters-data" type="application/json">{{.StartersByVersion | toJSON}}</script>
+  <script src="/static/runs.js"></script>
 </main>
 </body>
 </html>

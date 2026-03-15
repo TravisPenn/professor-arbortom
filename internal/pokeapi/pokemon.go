@@ -159,13 +159,22 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	}
 
 	// Upsert types (COACH-004)
+	var type1, type2 string
 	for _, t := range poke.Types {
+		if t.Slot == 1 {
+			type1 = t.Type.Name
+		} else if t.Slot == 2 {
+			type2 = t.Type.Name
+		}
 		if _, err := tx.Exec(
 			`INSERT OR IGNORE INTO pokemon_type (form_id, slot, type_name) VALUES (?, ?, ?)`,
 			poke.ID, t.Slot, t.Type.Name,
 		); err != nil {
 			logWarn("insert type %s for form %d: %v", t.Type.Name, poke.ID, err)
 		}
+	}
+	if type1 == "" {
+		type1 = "normal"
 	}
 
 	// Upsert base stats (COACH-004)
@@ -184,10 +193,18 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	}
 
 	// Upsert abilities (COACH-004)
+	var ability1, ability2 string
 	for _, a := range poke.Abilities {
 		slot := a.Slot
 		if a.IsHidden {
 			slot = 3
+		}
+		if !a.IsHidden {
+			if slot == 1 {
+				ability1 = a.Ability.Name
+			} else if slot == 2 {
+				ability2 = a.Ability.Name
+			}
 		}
 		if _, err := tx.Exec(
 			`INSERT OR IGNORE INTO pokemon_ability (form_id, slot, ability_name) VALUES (?, ?, ?)`,
@@ -195,6 +212,21 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 		); err != nil {
 			logWarn("insert ability %s for form %d: %v", a.Ability.Name, poke.ID, err)
 		}
+	}
+
+	// SC-001 compatibility: mirror data into consolidated pokemon table.
+	if _, err := tx.Exec(`
+		INSERT OR REPLACE INTO pokemon
+			(id, species_name, form_name, type1, type2,
+			 hp, attack, defense, sp_attack, sp_defense, speed, ability1, ability2)
+		VALUES (?, ?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		poke.ID, poke.Species.Name, type1, type2,
+		statMap["hp"], statMap["attack"], statMap["defense"],
+		statMap["special-attack"], statMap["special-defense"], statMap["speed"],
+		ability1, ability2,
+	); err != nil {
+		logWarn("insert consolidated pokemon %d: %v", poke.ID, err)
 	}
 
 	// Upsert moves and learnset entries
@@ -249,6 +281,27 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	if chainErr == nil && chainID > 0 {
 		if err := c.EnsureEvolutionChain(db, chainID); err != nil {
 			logWarn("EnsureEvolutionChain %d: %v", chainID, err)
+		}
+	}
+
+	// ── Phase 4: seed direct evolution targets' full data (background) ───────
+	// evolution_condition is now populated; fire background seeding for each
+	// direct evolution so learnset data is available for evo-note annotations.
+	evoRows, evoErr := db.Query(
+		`SELECT DISTINCT to_form_id FROM evolution_condition WHERE from_form_id = ?`,
+		formID,
+	)
+	if evoErr == nil {
+		var evoFormIDs []int
+		for evoRows.Next() {
+			var eid int
+			if evoRows.Scan(&eid) == nil {
+				evoFormIDs = append(evoFormIDs, eid)
+			}
+		}
+		evoRows.Close()
+		for _, eid := range evoFormIDs {
+			c.GoEnsurePokemon(db, eid, versionGroupID)
 		}
 	}
 
