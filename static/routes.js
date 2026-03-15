@@ -6,6 +6,7 @@
   var locationSelect = document.getElementById('location_id');
   var pokemonSelect  = document.getElementById('form_id_select');
   var pokemonText    = document.getElementById('form_id_text');
+  var pokemonLabel   = document.querySelector('label[for="form_id_text"]');
   var levelInput     = document.getElementById('level');
   var hint           = document.getElementById('pokemon-hint');
 
@@ -15,6 +16,7 @@
     pokemonText.disabled = true;
     pokemonText.classList.add('hidden');
     hint.classList.add('hidden');
+    if (pokemonLabel) { pokemonLabel.htmlFor = 'form_id_select'; }
     if (preselect) { pokemonSelect.value = preselect; }
   }
 
@@ -25,15 +27,17 @@
     pokemonText.classList.remove('hidden');
     hint.textContent = 'No encounter data yet \u2014 enter manually.';
     hint.classList.remove('hidden');
+    if (pokemonLabel) { pokemonLabel.htmlFor = 'form_id_text'; }
   }
 
   function showHint() {
     pokemonSelect.disabled = true;
     pokemonSelect.classList.add('hidden');
-    pokemonText.disabled = true;
-    pokemonText.classList.add('hidden');
+    pokemonText.disabled = false;
+    pokemonText.classList.remove('hidden');
     hint.textContent = 'Select a location first.';
     hint.classList.remove('hidden');
+    if (pokemonLabel) { pokemonLabel.htmlFor = 'form_id_text'; }
   }
 
   // Auto-fill level when the encounter has a fixed level (min === max).
