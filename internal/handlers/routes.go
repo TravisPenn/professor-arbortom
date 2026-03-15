@@ -148,12 +148,16 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		if outcome == "caught" && formID > 0 {
 			// Check for a promotable existing row (Team-first, Routes-second case).
 			var existingID int
-			db.QueryRow(`
+			row := db.QueryRow(`
 				SELECT id FROM run_pokemon
 				WHERE run_id = ? AND form_id = ? AND is_alive = 1
 				  AND acquisition_type IN ('manual', 'wild')
 				ORDER BY id LIMIT 1
-			`, run.ID, formID).Scan(&existingID) //nolint:errcheck
+			`, run.ID, formID)
+			if err := row.Scan(&existingID); err != nil && err != sql.ErrNoRows {
+				respondError(c, err)
+				return
+			}
 
 			if existingID > 0 {
 				// Merge catch data into the existing row.
