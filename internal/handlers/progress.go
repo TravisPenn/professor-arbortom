@@ -130,6 +130,7 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 
 		// Rebuild flags: present in POST array = true, absent = false
 		allFlags, _, _ := loadFlags(db, run.ID, run.VersionID)
+		hasRunSetting := tableExists(db, "run_setting")
 		for _, fd := range allFlags {
 			val := "false"
 			for _, f := range flags {
@@ -148,7 +149,7 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			}
 
 			// SC-003 compatibility: mirror flags into run_setting when available.
-			if tableExists(db, "run_setting") {
+			if hasRunSetting {
 				if _, err := db.Exec(
 					`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'flag', ?, ?)`,
 					run.ID, fd.Key, val,
