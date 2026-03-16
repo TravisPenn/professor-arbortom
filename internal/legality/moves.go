@@ -175,10 +175,9 @@ func annotateEvoNotes(db *sql.DB, moves []Move, formID, versionGroupID int) erro
 	}
 
 	evoRows, err := db.Query(`
-		SELECT ec.to_form_id, ps.name
+		SELECT ec.to_form_id, p.species_name
 		FROM evolution_condition ec
-		JOIN pokemon_form pf ON pf.id = ec.to_form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = ec.to_form_id
 		WHERE ec.from_form_id = ?
 		GROUP BY ec.to_form_id
 	`, formID)
@@ -275,10 +274,9 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 		var nextFrontier []int
 		for _, fid := range frontier {
 			rows, err := db.Query(`
-				SELECT ec.to_form_id, ps.name
+				SELECT ec.to_form_id, p.species_name
 				FROM evolution_condition ec
-				JOIN pokemon_form pf ON pf.id = ec.to_form_id
-				JOIN pokemon_species ps ON ps.id = pf.species_id
+				JOIN pokemon p ON p.id = ec.to_form_id
 				WHERE ec.from_form_id = ?
 				GROUP BY ec.to_form_id
 			`, fid)

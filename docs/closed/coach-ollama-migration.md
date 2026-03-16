@@ -1,8 +1,9 @@
 # PokemonProfessor — AI Coach: Migrate to Direct Ollama Client
 
-**Status**: Ready for implementation
+**Status**: Completed
 **Priority**: High
 **Date**: 2026-03-14
+**Closed**: 2026-03-15
 
 Cross-reference: [architecture.md](architecture.md) for module structure,
 [coach-enrichment.md](coach-enrichment.md) for payload schema,
@@ -124,15 +125,17 @@ The system message is omitted when `COACH_SYSTEM_PROMPT` is empty.
 
 ### Acceptance Criteria
 
-- [ ] `go build ./...` succeeds with no reference to `ZeroClaw` or `zeroclaw`.
-- [ ] `IsAvailable()` returns `false` when `host` is empty.
-- [ ] `IsAvailable()` returns `false` when `GET {host}/` does not return 200.
-- [ ] `QueryCoach` request body always contains `"keep_alive": 0`.
-- [ ] `QueryCoach` omits the system message when `systemPrompt` is `""`.
-- [ ] `QueryCoach` returns `CoachResponse{Available: false}` on any network or parse error.
-- [ ] `CoachResponse.Truncated` is `true` when `done_reason == "length"`.
-- [ ] `ValidateConfig` rejects non-http/https schemes and empty host when host is set.
-- [ ] `ValidateConfig` accepts empty host (disabled state).
+- [x] `go build ./...` succeeds with no reference to `ZeroClaw` or `zeroclaw`.
+- [x] `IsAvailable()` returns `false` when `host` is empty.
+- [x] `IsAvailable()` returns `false` when `GET {host}/` does not return 200.
+- [x] `QueryCoach` request body always contains `"keep_alive": 0`.
+- [x] `QueryCoach` omits the system message when `systemPrompt` is `""`.
+- [x] `QueryCoach` returns `CoachResponse{Available: false}` on any network or parse error.
+- [x] `CoachResponse.Truncated` is `true` when `done_reason == "length"`.
+- [x] `ValidateConfig` rejects non-http/https schemes and empty host when host is set.
+- [x] `ValidateConfig` accepts empty host (disabled state).
+
+> **Status**: Done (2026-03-15) — `internal/services/coach.go` implements `CoachClient` with direct Ollama `/api/chat` transport. `keep_alive: 0` hardcoded. `ValidateConfig` enforces http/https scheme. `zeroclaw.go` and `zeroclaw_test.go` deleted.
 
 ---
 
@@ -181,9 +184,11 @@ field. These are mechanical renames — no logic changes.
 
 ### Acceptance Criteria
 
-- [ ] No reference to `ZeroClawAvailable` remains in any `.go` file.
-- [ ] `go vet ./internal/handlers/...` is clean.
-- [ ] Existing handler tests pass unchanged.
+- [x] No reference to `ZeroClawAvailable` remains in any `.go` file.
+- [x] `go vet ./internal/handlers/...` is clean.
+- [x] Existing handler tests pass unchanged.
+
+> **Status**: Done (2026-03-15) — All four handler files updated: `coach.go`, `api.go`, `pages.go`, `runs.go`. `ZeroClawAvailable` → `CoachAvailable` throughout. Health JSON key updated to `"coach"`.
 
 ---
 
@@ -222,9 +227,11 @@ zc := services.NewCoachClient(coachHost, coachModel, coachPrompt)
 
 ### Acceptance Criteria
 
-- [ ] `ZEROCLAW_GATEWAY` and `ZEROCLAW_AGENT` are not read anywhere in the binary.
-- [ ] Binary starts with no env vars set (`COACH_HOST` empty) — logs no fatal errors.
-- [ ] `COACH_MODEL` defaults to `"qwen2.5:3b"` when `COACH_HOST` is set and `COACH_MODEL` is empty.
+- [x] `ZEROCLAW_GATEWAY` and `ZEROCLAW_AGENT` are not read anywhere in the binary.
+- [x] Binary starts with no env vars set (`COACH_HOST` empty) — logs no fatal errors.
+- [x] `COACH_MODEL` defaults to `"qwen2.5:3b"` when `COACH_HOST` is set and `COACH_MODEL` is empty.
+
+> **Status**: Done (2026-03-15) — `main.go` reads `COACH_HOST`, `COACH_MODEL`, `COACH_SYSTEM_PROMPT`. Defaults `coachModel` to `"qwen2.5:3b"` when host is set and model is empty.
 
 ---
 
@@ -250,9 +257,11 @@ placeholder banner tells the user to set `ZEROCLAW_GATEWAY`.
 
 ### Acceptance Criteria
 
-- [ ] No reference to `ZeroClawAvailable` or `ZEROCLAW_GATEWAY` remains in any `.html` file.
-- [ ] Coach panel renders the placeholder banner when `COACH_HOST` is unset.
-- [ ] Coach panel renders the query form when `COACH_HOST` is set and Ollama is reachable.
+- [x] No reference to `ZeroClawAvailable` or `ZEROCLAW_GATEWAY` remains in any `.html` file.
+- [x] Coach panel renders the placeholder banner when `COACH_HOST` is unset.
+- [x] Coach panel renders the query form when `COACH_HOST` is set and Ollama is reachable.
+
+> **Status**: Done (2026-03-15) — `coach.html` and `overview.html` updated to `{{if .CoachAvailable}}`. Placeholder banner references `COACH_HOST`.
 
 ---
 
@@ -286,8 +295,10 @@ placeholder banner tells the user to set `ZEROCLAW_GATEWAY`.
 
 ### Acceptance Criteria
 
-- [ ] `go test ./internal/services/... -v` — all tests pass.
-- [ ] `go test -race ./internal/services/...` — no races.
+- [x] `go test ./internal/services/... -v` — all tests pass.
+- [x] `go test -race ./internal/services/...` — no races.
+
+> **Status**: Done (2026-03-15) — `coach_test.go` covers `IsAvailable`, `QueryCoach` (success, server error, malformed, keep-alive, truncated, no-system-prompt), and `ValidateConfig` (empty, http, https, bad scheme, no host).
 
 ---
 

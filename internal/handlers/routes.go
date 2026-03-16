@@ -69,18 +69,16 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		// Resolve form ID from species name (best-effort, case-insensitive).
 		var formID int
 		db.QueryRow(`
-			SELECT pf.id FROM pokemon_form pf
-			JOIN pokemon_species ps ON ps.id = pf.species_id
-			WHERE LOWER(ps.name) = LOWER(?) LIMIT 1
+			SELECT id FROM pokemon
+			WHERE LOWER(species_name) = LOWER(?) LIMIT 1
 		`, speciesName).Scan(&formID) //nolint:errcheck
 
 		// Nuzlocke duplicate check
 		if nuzlockeOn && outcome == "caught" && locationID > 0 {
 			var prevSpecies string
 			err := db.QueryRow(`
-				SELECT ps.name FROM run_pokemon rp
-				JOIN pokemon_form pf ON pf.id = rp.form_id
-				JOIN pokemon_species ps ON ps.id = pf.species_id
+				SELECT p.species_name FROM run_pokemon rp
+				JOIN pokemon p ON p.id = rp.form_id
 				WHERE rp.run_id = ? AND rp.met_location_id = ?
 				LIMIT 1
 			`, run.ID, locationID).Scan(&prevSpecies)

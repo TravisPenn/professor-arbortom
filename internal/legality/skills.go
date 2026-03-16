@@ -11,12 +11,11 @@ func LoadRunState(db *sql.DB, runID int) (*RunState, error) {
 	var rs RunState
 	rs.RunID = runID
 
-	// Core run + progress
+	// Core run + progress (SC-002: badge_count and current_location_id are now on run)
 	err := db.QueryRow(`
-		SELECT r.version_id, gv.version_group_id, COALESCE(rp.badge_count, 0), rp.current_location_id
+		SELECT r.version_id, gv.version_group_id, COALESCE(r.badge_count, 0), r.current_location_id
 		FROM run r
 		JOIN game_version gv ON gv.id = r.version_id
-		LEFT JOIN run_progress rp ON rp.run_id = r.id
 		WHERE r.id = ?
 	`, runID).Scan(&rs.VersionID, &rs.VersionGroupID, &rs.BadgeCount, &rs.LocationID)
 	if err == sql.ErrNoRows {
@@ -26,15 +25,14 @@ func LoadRunState(db *sql.DB, runID int) (*RunState, error) {
 		return nil, fmt.Errorf("legality: load run state: %w", err)
 	}
 
-	// Active rules + params
+	// Active rules + params (SC-003: run_setting replaces run_rule + rule_def)
 	rs.ActiveRules = make(map[string]bool)
 	rs.RuleParams = make(map[string]map[string]interface{})
 
 	rows, err := db.Query(`
-		SELECT rd.key, rr.enabled, rr.params_json
-		FROM run_rule rr
-		JOIN rule_def rd ON rd.id = rr.rule_def_id
-		WHERE rr.run_id = ?
+		SELECT key, value
+		FROM run_setting
+		WHERE run_id = ? AND type = 'rule'
 	`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("legality: load rules: %w", err)
@@ -43,11 +41,10 @@ func LoadRunState(db *sql.DB, runID int) (*RunState, error) {
 
 	for rows.Next() {
 		var key, paramsJSON string
-		var enabled int
-		if err := rows.Scan(&key, &enabled, &paramsJSON); err != nil {
+		if err := rows.Scan(&key, &paramsJSON); err != nil {
 			return nil, err
 		}
-		rs.ActiveRules[key] = enabled == 1
+		rs.ActiveRules[key] = true
 
 		if paramsJSON != "" && paramsJSON != "{}" {
 			var params map[string]interface{}
@@ -57,10 +54,10 @@ func LoadRunState(db *sql.DB, runID int) (*RunState, error) {
 		}
 	}
 
-	// Run flags
+	// Run flags (SC-003: run_setting replaces run_flag)
 	rs.Flags = make(map[string]bool)
 	flagRows, err := db.Query(
-		`SELECT key, value FROM run_flag WHERE run_id = ?`, runID,
+		`SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'`, runID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("legality: load flags: %w", err)

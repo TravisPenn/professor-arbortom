@@ -10,6 +10,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ruleCatalog is the authoritative list of supported rules.
+// Replaces the rule_def table (SC-003).
+var ruleCatalog = []struct {
+	Key         string
+	Label       string
+	Description string
+}{
+	{"nuzlocke", "Nuzlocke", "Only one catch per route; fainted Pokémon are considered dead"},
+	{"level_cap", "Level Cap", "Pokémon cannot exceed the level of the next gym leader's ace"},
+	{"no_trade_evolutions", "No Trade Evolutions", "Trade-evolution Pokémon cannot be evolved"},
+	{"theme_run", "Theme Run", "Restrict your team to a specific theme or type"},
+}
+
 // ShowRules renders GET /runs/:run_id/rules
 func ShowRules(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -28,35 +41,11 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 
-		// Load rule defs
-		rows, err := db.Query(
-			`SELECT rd.id, rd.key FROM rule_def rd`,
-		)
-		if err != nil {
-			respondError(c, err)
-			return
-		}
-		defer rows.Close()
-
-		type ruleDef struct {
-			id  int
-			key string
-		}
-		var defs []ruleDef
-		for rows.Next() {
-			var d ruleDef
-			rows.Scan(&d.id, &d.key) //nolint:errcheck
-			defs = append(defs, d)
-		}
-
-		for _, d := range defs {
-			enabled := 0
-			if c.PostForm("rule_"+d.key) != "" {
-				enabled = 1
-			}
+		for _, def := range ruleCatalog {
+			enabled := c.PostForm("rule_"+def.Key) != ""
 
 			paramsJSON := "{}"
-			if d.key == "level_cap" {
+			if def.Key == "level_cap" {
 				rawParams := c.PostForm("rule_level_cap_params")
 				if rawParams != "" {
 					capVal, err := strconv.Atoi(rawParams)
@@ -65,7 +54,7 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 						paramsJSON = string(b)
 					}
 				}
-			} else if d.key == "theme_run" {
+			} else if def.Key == "theme_run" {
 				desc := c.PostForm("rule_theme_run_params")
 				if desc != "" {
 					b, _ := json.Marshal(map[string]string{"description": desc})
@@ -73,27 +62,17 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 				}
 			}
 
-			db.Exec(`
-				INSERT INTO run_rule (run_id, rule_def_id, enabled, params_json)
-				VALUES (?, ?, ?, ?)
-				ON CONFLICT(run_id, rule_def_id) DO UPDATE SET
-					enabled = excluded.enabled,
-					params_json = excluded.params_json
-			`, run.ID, d.id, enabled, paramsJSON) //nolint:errcheck
-
-			// SC-003 compatibility: mirror enabled rules into run_setting.
-			if tableExists(db, "run_setting") {
-				if enabled == 1 {
-					db.Exec(
-						`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'rule', ?, ?)`,
-						run.ID, d.key, paramsJSON,
-					) //nolint:errcheck
-				} else {
-					db.Exec(
-						`DELETE FROM run_setting WHERE run_id = ? AND type = 'rule' AND key = ?`,
-						run.ID, d.key,
-					) //nolint:errcheck
-				}
+			// SC-003: write directly to run_setting.
+			if enabled {
+				db.Exec( //nolint:errcheck
+					`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'rule', ?, ?)`,
+					run.ID, def.Key, paramsJSON,
+				)
+			} else {
+				db.Exec( //nolint:errcheck
+					`DELETE FROM run_setting WHERE run_id = ? AND type = 'rule' AND key = ?`,
+					run.ID, def.Key,
+				)
 			}
 		}
 
@@ -103,39 +82,35 @@ func UpdateRules(db *sql.DB) gin.HandlerFunc {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-var ruleLabels = map[string]string{
-	"nuzlocke":            "Nuzlocke",
-	"level_cap":           "Level Cap",
-	"no_trade_evolutions": "No Trade Evolutions",
-	"theme_run":           "Theme Run",
-}
-
 func buildRulesPage(c *gin.Context, db *sql.DB, runID int) (RulesPage, error) {
-	rows, err := db.Query(`
-		SELECT rd.key, rd.description, rr.enabled, rr.params_json
-		FROM rule_def rd
-		LEFT JOIN run_rule rr ON rr.rule_def_id = rd.id AND rr.run_id = ?
-		ORDER BY rd.id
-	`, runID)
+	// Load enabled rules from run_setting (SC-003).
+	enabledRows, err := db.Query(
+		`SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'rule'`, runID,
+	)
 	if err != nil {
 		return RulesPage{}, err
 	}
-	defer rows.Close()
+	defer enabledRows.Close()
+
+	enabledMap := make(map[string]string)
+	for enabledRows.Next() {
+		var key, val string
+		if err := enabledRows.Scan(&key, &val); err == nil {
+			enabledMap[key] = val
+		}
+	}
 
 	var cards []RuleCard
-	for rows.Next() {
-		var rc RuleCard
-		var enabled int
-		var paramsJSON string
-		if err := rows.Scan(&rc.Key, &rc.Description, &enabled, &paramsJSON); err != nil {
-			continue
+	for _, def := range ruleCatalog {
+		rc := RuleCard{
+			Key:         def.Key,
+			Label:       def.Label,
+			Description: def.Description,
 		}
-		rc.Label = ruleLabels[rc.Key]
-		if rc.Label == "" {
-			rc.Label = rc.Key
+		if paramsJSON, ok := enabledMap[def.Key]; ok {
+			rc.Enabled = true
+			rc.Params = ruleParams(paramsJSON)
 		}
-		rc.Enabled = enabled == 1
-		rc.Params = ruleParams(paramsJSON)
 		cards = append(cards, rc)
 	}
 

@@ -34,29 +34,16 @@ func RunContextMiddleware(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Load progress. Prefer consolidated run columns (SC-002), fallback to run_progress.
+		// Load progress from run columns (SC-002)
 		var progress models.RunProgress
 		progress.RunID = runID
-		if columnExists(db, "run", "badge_count") && columnExists(db, "run", "current_location_id") {
-			err = db.QueryRow(
-				`SELECT COALESCE(badge_count, 0), current_location_id, COALESCE(progress_updated_at, '') FROM run WHERE id = ?`,
-				runID,
-			).Scan(&progress.BadgeCount, &progress.CurrentLocationID, &progress.UpdatedAt)
-			if err != nil {
-				respondError(c, err)
-				return
-			}
-		} else {
-			row := db.QueryRow(
-				`SELECT badge_count, current_location_id, updated_at FROM run_progress WHERE run_id = ?`, runID,
-			)
-			var updatedAt string
-			err = row.Scan(&progress.BadgeCount, &progress.CurrentLocationID, &updatedAt)
-			if err != nil && err != sql.ErrNoRows {
-				respondError(c, err)
-				return
-			}
-			progress.UpdatedAt = updatedAt
+		err = db.QueryRow(
+			`SELECT COALESCE(badge_count, 0), current_location_id, COALESCE(progress_updated_at, '') FROM run WHERE id = ?`,
+			runID,
+		).Scan(&progress.BadgeCount, &progress.CurrentLocationID, &progress.UpdatedAt)
+		if err != nil {
+			respondError(c, err)
+			return
 		}
 
 		// Load active rules
@@ -86,33 +73,11 @@ func RunContextMiddleware(db *sql.DB) gin.HandlerFunc {
 }
 
 func loadActiveRules(db *sql.DB, runID int) ([]models.ActiveRule, error) {
-	if tableExists(db, "run_setting") {
-		rows, err := db.Query(`
-			SELECT key, value
-			FROM run_setting
-			WHERE run_id = ? AND type = 'rule'
-		`, runID)
-		if err == nil {
-			defer rows.Close()
-
-			var rules []models.ActiveRule
-			for rows.Next() {
-				var r models.ActiveRule
-				if err := rows.Scan(&r.Key, &r.ParamsJSON); err != nil {
-					return nil, err
-				}
-				r.Enabled = true
-				rules = append(rules, r)
-			}
-			return rules, rows.Err()
-		}
-	}
-
+	// SC-003: use run_setting exclusively
 	rows, err := db.Query(`
-		SELECT rd.key, rr.enabled, rr.params_json
-		FROM run_rule rr
-		JOIN rule_def rd ON rd.id = rr.rule_def_id
-		WHERE rr.run_id = ?
+		SELECT key, value
+		FROM run_setting
+		WHERE run_id = ? AND type = 'rule'
 	`, runID)
 	if err != nil {
 		return nil, err
@@ -122,14 +87,13 @@ func loadActiveRules(db *sql.DB, runID int) ([]models.ActiveRule, error) {
 	var rules []models.ActiveRule
 	for rows.Next() {
 		var r models.ActiveRule
-		var enabled int
-		if err := rows.Scan(&r.Key, &enabled, &r.ParamsJSON); err != nil {
+		if err := rows.Scan(&r.Key, &r.ParamsJSON); err != nil {
 			return nil, err
 		}
-		r.Enabled = enabled == 1
+		r.Enabled = true
 		rules = append(rules, r)
 	}
-	return rules, nil
+	return rules, rows.Err()
 }
 
 // buildRunContext constructs the RunContext template struct from Gin context values.
