@@ -151,11 +151,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 		}
 
 		var speciesName string
-		db.QueryRow(`
-			SELECT ps.name FROM pokemon_form pf
-			JOIN pokemon_species ps ON ps.id = pf.species_id
-			WHERE pf.id = ?
-		`, formID).Scan(&speciesName) //nolint:errcheck
+		db.QueryRow(`SELECT species_name FROM pokemon WHERE id = ?`, formID).Scan(&speciesName) //nolint:errcheck
 
 		// Trigger background seeding for direct evolution targets that lack
 		// learnset data — ensures evo-note and evo-exclusive columns are populated.
@@ -223,10 +219,9 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 	}
 
 	rows, err := db.Query(`
-		SELECT rp.id, rp.party_slot, rp.form_id, rp.level, ps.name
+		SELECT rp.id, rp.party_slot, rp.form_id, rp.level, p.species_name
 		FROM run_pokemon rp
-		JOIN pokemon_form pf ON pf.id = rp.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = rp.form_id
 		WHERE rp.run_id = ? AND rp.in_party = 1
 		ORDER BY rp.party_slot
 	`, runID)
@@ -258,30 +253,29 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 			Level:        pr.level,
 		}
 
-		// Types (COACH-004)
-		typeRows, _ := db.Query(`SELECT type_name FROM pokemon_type WHERE form_id = ? ORDER BY slot`, pr.formID)
+		// Types from pokemon.type1/type2 (SC-001)
+		var pType1, pType2 sql.NullString
+		db.QueryRow(`SELECT type1, type2 FROM pokemon WHERE id = ?`, pr.formID).Scan(&pType1, &pType2) //nolint:errcheck
 		var types []string
-		if typeRows != nil {
-			for typeRows.Next() {
-				var tn string
-				typeRows.Scan(&tn) //nolint:errcheck
-				types = append(types, tn)
-			}
-			typeRows.Close()
+		if pType1.Valid && pType1.String != "" {
+			types = append(types, pType1.String)
+		}
+		if pType2.Valid && pType2.String != "" {
+			types = append(types, pType2.String)
 		}
 		detail.Types = types
 
-		// Base stats (COACH-004)
+		// Base stats from pokemon table (SC-001)
 		var stats legality.BaseStats
-		if err := db.QueryRow(`SELECT hp, attack, defense, sp_attack, sp_defense, speed FROM pokemon_stats WHERE form_id = ?`, pr.formID).
+		if err := db.QueryRow(`SELECT hp, attack, defense, sp_attack, sp_defense, speed FROM pokemon WHERE id = ?`, pr.formID).
 			Scan(&stats.HP, &stats.Attack, &stats.Defense, &stats.SpAttack, &stats.SpDefense, &stats.Speed); err == nil {
 			detail.BaseStats = &stats
 		}
 
-		// Primary ability slot 1 (COACH-004)
-		var abilityName string
-		db.QueryRow(`SELECT ability_name FROM pokemon_ability WHERE form_id = ? AND slot = 1`, pr.formID).Scan(&abilityName) //nolint:errcheck
-		detail.Ability = abilityName
+		// Primary ability from pokemon.ability1 (SC-001)
+		var abilityName sql.NullString
+		db.QueryRow(`SELECT ability1 FROM pokemon WHERE id = ?`, pr.formID).Scan(&abilityName) //nolint:errcheck
+		detail.Ability = abilityName.String
 
 		// Current moves from run_pokemon_move (COACH-005)
 		moveRows, _ := db.Query(`

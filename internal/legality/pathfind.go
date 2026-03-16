@@ -12,11 +12,10 @@ import (
 func LoadEvolutionGraph(db *sql.DB) (*EvolutionGraph, error) {
 	rows, err := db.Query(`
 		SELECT ec.from_form_id, ec.to_form_id,
-		       ps.name AS to_species_name,
+		       p.species_name AS to_species_name,
 		       ec.trigger, ec.conditions_json
 		FROM evolution_condition ec
-		JOIN pokemon_form pf ON pf.id = ec.to_form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = ec.to_form_id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("pathfind: load evolution graph: %w", err)

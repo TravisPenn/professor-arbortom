@@ -22,12 +22,11 @@ func EvolutionOptions(db *sql.DB, runID, formID int) ([]Evolution, error) {
 	rows, err := db.Query(`
 		SELECT
 			ec.to_form_id,
-			ps.name AS to_species_name,
+			p.species_name AS to_species_name,
 			ec.trigger,
 			ec.conditions_json
 		FROM evolution_condition ec
-		JOIN pokemon_form pf ON pf.id = ec.to_form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = ec.to_form_id
 		WHERE ec.from_form_id = ?
 		ORDER BY ec.trigger
 	`, formID)

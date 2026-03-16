@@ -10,33 +10,17 @@ import (
 // loadRunSummaries returns all runs (active and archived) sorted by updated_at DESC.
 // The caller splits them by rs.Archived.
 func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
-	query := `
+	rows, err := db.Query(`
 		SELECT
 			r.id, r.name, u.name AS user_name, gv.name AS version_name,
-			COALESCE(rp.badge_count, 0) AS badge_count,
-			COALESCE(rp.updated_at, r.created_at) AS updated_at,
+			COALESCE(r.badge_count, 0) AS badge_count,
+			COALESCE(r.progress_updated_at, r.created_at) AS updated_at,
 			COALESCE(r.archived_at, '') AS archived_at
 		FROM run r
 		JOIN user u ON u.id = r.user_id
 		JOIN game_version gv ON gv.id = r.version_id
-		LEFT JOIN run_progress rp ON rp.run_id = r.id
 		ORDER BY updated_at DESC
-	`
-	if columnExists(db, "run", "badge_count") && columnExists(db, "run", "progress_updated_at") {
-		query = `
-			SELECT
-				r.id, r.name, u.name AS user_name, gv.name AS version_name,
-				COALESCE(r.badge_count, 0) AS badge_count,
-				COALESCE(r.progress_updated_at, r.created_at) AS updated_at,
-				COALESCE(r.archived_at, '') AS archived_at
-			FROM run r
-			JOIN user u ON u.id = r.user_id
-			JOIN game_version gv ON gv.id = r.version_id
-			ORDER BY updated_at DESC
-		`
-	}
-
-	rows, err := db.Query(query)
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -51,20 +35,11 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 		}
 		rs.Archived = archivedAt != ""
 
-		// Load active rules for this run. Prefer run_setting (SC-003), fallback legacy tables.
-		ruleQuery := `
-			SELECT rd.key FROM run_rule rr
-			JOIN rule_def rd ON rd.id = rr.rule_def_id
-			WHERE rr.run_id = ? AND rr.enabled = 1
-		`
-		if tableExists(db, "run_setting") {
-			ruleQuery = `
-				SELECT key FROM run_setting
-				WHERE run_id = ? AND type = 'rule'
-			`
-		}
-
-		ruleRows, err := db.Query(ruleQuery, rs.ID)
+		// Load active rules for this run (SC-003: run_setting).
+		ruleRows, err := db.Query(`
+			SELECT key FROM run_setting
+			WHERE run_id = ? AND type = 'rule'
+		`, rs.ID)
 		if err == nil {
 			defer ruleRows.Close()
 			for ruleRows.Next() {
@@ -100,10 +75,9 @@ func loadVersionOptions(db *sql.DB) ([]VersionOption, error) {
 
 func loadStartersByVersion(db *sql.DB) (map[int][]StarterOption, error) {
 	rows, err := db.Query(`
-		SELECT gs.version_id, gs.form_id, ps.name
+		SELECT gs.version_id, gs.form_id, p.species_name
 		FROM game_starter gs
-		JOIN pokemon_form pf ON pf.id = gs.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = gs.form_id
 		ORDER BY gs.version_id, gs.priority
 	`)
 	if err != nil {
@@ -165,14 +139,13 @@ func loadLocations(db *sql.DB, versionID int) ([]LocationOption, error) {
 // min_level == max_level indicates a fixed-level encounter (e.g. static legendary).
 func loadEncountersByLocation(db *sql.DB, versionID int) (map[int][]EncounterOption, error) {
 	rows, err := db.Query(`
-		SELECT e.location_id, ps.name, MIN(e.min_level), MAX(e.max_level)
+		SELECT e.location_id, p.species_name, MIN(e.min_level), MAX(e.max_level)
 		FROM encounter e
-		JOIN pokemon_form pf ON pf.id = e.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = e.form_id
 		JOIN location l ON l.id = e.location_id
 		WHERE l.version_id = ?
-		GROUP BY e.location_id, ps.id
-		ORDER BY e.location_id, ps.name
+		GROUP BY e.location_id, p.id
+		ORDER BY e.location_id, p.species_name
 	`, versionID)
 	if err != nil {
 		return nil, err
@@ -209,11 +182,7 @@ var gen3FlagDefs = []FlagDef{
 }
 
 func loadFlags(db *sql.DB, runID, versionID int) ([]FlagDef, map[string]bool, error) {
-	query := `SELECT key, value FROM run_flag WHERE run_id = ?`
-	if tableExists(db, "run_setting") {
-		query = `SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'`
-	}
-	rows, err := db.Query(query, runID)
+	rows, err := db.Query(`SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'`, runID)
 	if err != nil {
 		return gen3FlagDefs, map[string]bool{}, err
 	}
@@ -252,13 +221,12 @@ func loadRouteLog(db *sql.DB, runID int, nuzlockeOn bool) ([]RouteEntry, error) 
 	rows, err := db.Query(`
 		SELECT
 			COALESCE(l.name, 'unknown') AS loc_name,
-			ps.name AS species_name,
+			p.species_name,
 			rp.acquisition_type AS outcome,
 			COALESCE(rp.caught_level, rp.level) AS level,
 			rp.met_location_id
 		FROM run_pokemon rp
-		JOIN pokemon_form pf ON pf.id = rp.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = rp.form_id
 		LEFT JOIN location l ON l.id = rp.met_location_id
 		WHERE rp.run_id = ?
 		ORDER BY rp.id DESC

@@ -102,35 +102,20 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			}
 		}
 
-		// Update progress
+		// Update progress directly on the run row (SC-002)
 		if _, err := db.Exec(`
-			INSERT INTO run_progress (run_id, badge_count, current_location_id, updated_at)
-			VALUES (?, ?, ?, datetime('now'))
-			ON CONFLICT(run_id) DO UPDATE SET
-				badge_count = excluded.badge_count,
-				current_location_id = excluded.current_location_id,
-				updated_at = excluded.updated_at
-		`, run.ID, badgeCount, locationID); err != nil {
+			UPDATE run
+			SET badge_count = ?,
+			    current_location_id = ?,
+			    progress_updated_at = datetime('now')
+			WHERE id = ?
+		`, badgeCount, locationID, run.ID); err != nil {
 			respondError(c, err)
 			return
 		}
 
-		// SC-002 compatibility: also persist progress onto run when columns exist.
-		if columnExists(db, "run", "badge_count") && columnExists(db, "run", "current_location_id") {
-			if _, err := db.Exec(`
-				UPDATE run
-				SET badge_count = ?,
-				    current_location_id = ?,
-				    progress_updated_at = datetime('now')
-				WHERE id = ?
-			`, badgeCount, locationID, run.ID); err != nil {
-				log.Printf("WARN: update run progress columns for run %d: %v", run.ID, err)
-			}
-		}
-
 		// Rebuild flags: present in POST array = true, absent = false
 		allFlags, _, _ := loadFlags(db, run.ID, run.VersionID)
-		hasRunSetting := tableExists(db, "run_setting")
 		for _, fd := range allFlags {
 			val := "false"
 			for _, f := range flags {
@@ -139,23 +124,13 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 					break
 				}
 			}
+			// SC-003: write flags into run_setting.
 			// SEC-008: Flag writes are non-fatal — flags re-sync on next page load.
-			// Keys come from the controlled rule_def table.
 			if _, err := db.Exec(
-				`INSERT OR REPLACE INTO run_flag (run_id, key, value) VALUES (?, ?, ?)`,
+				`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'flag', ?, ?)`,
 				run.ID, fd.Key, val,
 			); err != nil {
-				log.Printf("WARN: write flag %s for run %d: %v", fd.Key, run.ID, err)
-			}
-
-			// SC-003 compatibility: mirror flags into run_setting when available.
-			if hasRunSetting {
-				if _, err := db.Exec(
-					`INSERT OR REPLACE INTO run_setting (run_id, type, key, value) VALUES (?, 'flag', ?, ?)`,
-					run.ID, fd.Key, val,
-				); err != nil {
-					log.Printf("WARN: write run_setting flag %s for run %d: %v", fd.Key, run.ID, err)
-				}
+				log.Printf("WARN: write run_setting flag %s for run %d: %v", fd.Key, run.ID, err)
 			}
 		}
 

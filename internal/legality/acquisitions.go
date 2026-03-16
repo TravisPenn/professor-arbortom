@@ -23,20 +23,19 @@ func LegalAcquisitions(db *sql.DB, runID int) ([]Acquisition, []Warning, error) 
 
 	rows, err := db.Query(`
 		SELECT
-			pf.id            AS form_id,
-			ps.name          AS species_name,
-			pf.form_name,
+			p.id             AS form_id,
+			p.species_name,
+			p.form_name,
 			l.name           AS location_name,
 			e.method,
 			e.min_level,
 			e.max_level
 		FROM encounter e
-		JOIN pokemon_form pf ON pf.id = e.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = e.form_id
 		JOIN location l ON l.id = e.location_id
 		WHERE e.location_id = ?
 		  AND l.version_id = ?
-		ORDER BY ps.name, e.method
+		ORDER BY p.species_name, e.method
 	`, *rs.LocationID, rs.VersionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("legality: acquisitions query: %w", err)

@@ -13,8 +13,21 @@ func setupPathfindDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 
 	mustExecPathfind(t, db, `
-		CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-		CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT);
+		CREATE TABLE pokemon (
+			id INTEGER PRIMARY KEY,
+			species_name TEXT NOT NULL,
+			form_name TEXT NOT NULL DEFAULT 'default',
+			type1 TEXT NOT NULL DEFAULT 'normal',
+			type2 TEXT,
+			hp INTEGER NOT NULL DEFAULT 0,
+			attack INTEGER NOT NULL DEFAULT 0,
+			defense INTEGER NOT NULL DEFAULT 0,
+			sp_attack INTEGER NOT NULL DEFAULT 0,
+			sp_defense INTEGER NOT NULL DEFAULT 0,
+			speed INTEGER NOT NULL DEFAULT 0,
+			ability1 TEXT,
+			ability2 TEXT
+		);
 		CREATE TABLE evolution_condition (
 			id INTEGER PRIMARY KEY,
 			from_form_id INTEGER,
@@ -31,16 +44,14 @@ func setupPathfindDB(t *testing.T) *sql.DB {
 	`)
 
 	// Species: Charmander(4) -> Charmeleon(5) -> Charizard(6)
-	mustExecPathfind(t, db, `INSERT INTO pokemon_species VALUES (4,'charmander'),(5,'charmeleon'),(6,'charizard')`)
-	mustExecPathfind(t, db, `INSERT INTO pokemon_form VALUES (4,4,'default'),(5,5,'default'),(6,6,'default')`)
+	mustExecPathfind(t, db, `INSERT INTO pokemon (id, species_name, form_name, type1) VALUES (4,'charmander','default','fire'),(5,'charmeleon','default','fire'),(6,'charizard','default','fire')`)
 	condLevel16, _ := json.Marshal(map[string]interface{}{"min_level": 16})
 	condLevel36, _ := json.Marshal(map[string]interface{}{"min_level": 36})
 	mustExecPathfind(t, db, `INSERT INTO evolution_condition (from_form_id, to_form_id, trigger, conditions_json) VALUES
 		(4, 5, 'level-up', ?), (5, 6, 'level-up', ?)`, string(condLevel16), string(condLevel36))
 
 	// Eevee (133) branching: Vaporeon(134) via water-stone, Jolteon(135) via thunder-stone, Espeon(196) via friendship
-	mustExecPathfind(t, db, `INSERT INTO pokemon_species VALUES (133,'eevee'),(134,'vaporeon'),(135,'jolteon'),(196,'espeon')`)
-	mustExecPathfind(t, db, `INSERT INTO pokemon_form VALUES (133,133,'default'),(134,134,'default'),(135,135,'default'),(196,196,'default')`)
+	mustExecPathfind(t, db, `INSERT INTO pokemon (id, species_name, form_name, type1) VALUES (133,'eevee','default','normal'),(134,'vaporeon','default','water'),(135,'jolteon','default','electric'),(196,'espeon','default','psychic')`)
 	condItem, _ := json.Marshal(map[string]interface{}{"item": "water-stone"})
 	condItem2, _ := json.Marshal(map[string]interface{}{"item": "thunder-stone"})
 	condFriend, _ := json.Marshal(map[string]interface{}{"friendship": true, "time_of_day": "day"})
@@ -49,14 +60,12 @@ func setupPathfindDB(t *testing.T) *sql.DB {
 		string(condItem), string(condItem2), string(condFriend))
 
 	// Kadabra(64) -> Alakazam(65) via trade
-	mustExecPathfind(t, db, `INSERT INTO pokemon_species VALUES (64,'kadabra'),(65,'alakazam')`)
-	mustExecPathfind(t, db, `INSERT INTO pokemon_form VALUES (64,64,'default'),(65,65,'default')`)
+	mustExecPathfind(t, db, `INSERT INTO pokemon (id, species_name, form_name, type1) VALUES (64,'kadabra','default','psychic'),(65,'alakazam','default','psychic')`)
 	mustExecPathfind(t, db, `INSERT INTO evolution_condition (from_form_id, to_form_id, trigger, conditions_json) VALUES
 		(64, 65, 'trade', '{}')`)
 
 	// Pikachu(25) -> Raichu(26) via thunder-stone; Pikachu learns Thunderbolt at level 26, Raichu never
-	mustExecPathfind(t, db, `INSERT INTO pokemon_species VALUES (25,'pikachu'),(26,'raichu')`)
-	mustExecPathfind(t, db, `INSERT INTO pokemon_form VALUES (25,25,'default'),(26,26,'default')`)
+	mustExecPathfind(t, db, `INSERT INTO pokemon (id, species_name, form_name, type1) VALUES (25,'pikachu','default','electric'),(26,'raichu','default','electric')`)
 	condStone, _ := json.Marshal(map[string]interface{}{"item": "thunder-stone"})
 	mustExecPathfind(t, db, `INSERT INTO evolution_condition (from_form_id, to_form_id, trigger, conditions_json) VALUES
 		(25, 26, 'use-item', ?)`, string(condStone))
@@ -227,7 +236,7 @@ func TestFindEvolutionPaths_NoInfiniteLoop(t *testing.T) {
 	rs := baseRunState()
 
 	paths := FindEvolutionPaths(g, 9999, rs, 0) // non-existent form
-	if paths != nil && len(paths) > 0 {
+	if len(paths) != 0 {
 		t.Error("expected empty paths for non-existent form")
 	}
 }

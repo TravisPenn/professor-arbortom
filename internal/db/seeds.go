@@ -14,8 +14,7 @@ import (
 // export/import.  Order is FK-safe: parents always precede children.
 var seedsTables = []string{
 	"game_version",
-	"pokemon_species",
-	"pokemon_form",
+	"pokemon",
 	"move",
 	"item",
 	"location",

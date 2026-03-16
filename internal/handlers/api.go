@@ -59,7 +59,7 @@ func APILegalAcquisitions(db *sql.DB) gin.HandlerFunc {
 		}
 
 		var badgeCount int
-		db.QueryRow(`SELECT badge_count FROM run_progress WHERE run_id = ?`, runID).Scan(&badgeCount) //nolint:errcheck
+		db.QueryRow(`SELECT COALESCE(badge_count, 0) FROM run WHERE id = ?`, runID).Scan(&badgeCount) //nolint:errcheck
 
 		c.JSON(http.StatusOK, gin.H{
 			"run_id":       runID,

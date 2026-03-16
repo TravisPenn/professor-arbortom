@@ -7,7 +7,7 @@ import (
 	"github.com/TravisPenn/professor-arbortom/migrations"
 )
 
-const currentVersion = 15
+const currentVersion = 16
 
 // Migrate checks PRAGMA user_version and applies pending migrations.
 // Safe to call on every startup.
@@ -150,7 +150,17 @@ func Migrate(db *sql.DB) error {
 		if err := applyMigration(db, "015_merge_run_settings.sql"); err != nil {
 			return fmt.Errorf("db: migration 015: %w", err)
 		}
-		return setUserVersion(db, 15)
+		if err := setUserVersion(db, 15); err != nil {
+			return err
+		}
+		version = 15
+	}
+
+	if version == 15 {
+		if err := applyMigration(db, "016_drop_legacy_tables.sql"); err != nil {
+			return fmt.Errorf("db: migration 016: %w", err)
+		}
+		return setUserVersion(db, 16)
 	}
 
 	return fmt.Errorf("db: unknown user_version %d", version)

@@ -1,9 +1,9 @@
 # PokemonProfessor — run_pokemon Data Continuity PRD
 
-**Status**: Phase 1 + 1b Implemented · Phase 2 Pending
+**Status**: Phase 1 + 1b + 2 Implemented
 **Priority**: High
 **Date**: 2026-03-14
-**Last updated**: 2026-03-14
+**Last updated**: 2026-03-16
 
 Cross-reference: [architecture.md](architecture.md), [schema.md](schema.md), [api.md](api.md)
 
@@ -421,7 +421,7 @@ No change to `MoveOption` needed — `LearnMethod` and `EvoNote` already exist. 
 
 ---
 
-## Phase 2 — Schema Consolidation ⏳
+## Phase 2 — Schema Consolidation ✅
 
 These changes reduce the table count from 25 to 18. They have no effect on application
 behaviour — only on query complexity and schema legibility. All handlers must be updated
@@ -572,7 +572,7 @@ SELECT key, value FROM run_setting WHERE run_id = ? AND type = 'flag'
 
 ## Migration Plan
 
-### Phase 1 — Data Continuity
+#### Phase 1 — Data Continuity
 
 Steps 1–2 are a hard dependency for all others. Steps 3–11 are independent after step 2.
 
@@ -590,7 +590,7 @@ Steps 1–2 are a hard dependency for all others. Steps 3–11 are independent a
 | 10 | `templates/routes.html` | Display `acquisition_type` label in Outcome column |
 | 11 | Tests | Update `bootstrapProgressDB` schema; add upsert-or-merge test for `LogEncounter` |
 
-### Phase 1b — Coach Display Improvements
+#### Phase 1b — Coach Display Improvements
 
 No schema dependency. Can run in parallel with Phase 1 steps 3–11.
 
@@ -603,21 +603,22 @@ No schema dependency. Can run in parallel with Phase 1 steps 3–11.
 | 1b-5 | `templates/coach.html` | Style `evo-exclusive` rows distinctly in Party Moves table |
 | 1b-6 | Tests | Add test for evo-exclusive move inclusion; test deduplication of acquisitions |
 
-### Phase 2 — Schema Consolidation
+#### Phase 2 — Schema Consolidation ✅
 
 Depends on Phase 1 complete. SC-001, SC-002, SC-003 are independent of each other.
 
 | # | File | Action |
 |---|---|---|
-| 12 | `migrations/013_merge_pokemon_tables.sql` | Create `pokemon`; migrate data from 5 tables; drop old tables |
-| 13 | `migrations/014_merge_run_progress.sql` | Add progress columns to `run`; migrate data; drop `run_progress` |
-| 14 | `migrations/015_merge_run_settings.sql` | Create `run_setting`; migrate flags + rules; drop `run_flag`, `run_rule`, `rule_def` |
-| 15 | `internal/db/migrate.go` | Register migrations 013–015; bump max version to 15 |
-| 16 | `internal/pokeapi/` | Update all seeders to write to `pokemon` instead of `pokemon_form`/`pokemon_species`/etc. |
-| 17 | `internal/handlers/` | Update all queries referencing removed tables (see SC-001–SC-003 handler impact notes) |
-| 18 | `internal/legality/` | Update all queries referencing `pokemon_form`, `pokemon_species`, `pokemon_type`, `pokemon_stats` |
-| 19 | `docs/prds/schema.md` | Rewrite schema section to reflect 18-table target |
-| 20 | Tests | Update all test bootstrap schemas; verify legality engine passes against new table names |
+| 12 | `migrations/013_merge_pokemon_tables.sql` | ✅ Create `pokemon`; migrate data from 5 tables |
+| 13 | `migrations/014_merge_run_progress.sql` | ✅ Add progress columns to `run`; migrate data |
+| 14 | `migrations/015_merge_run_settings.sql` | ✅ Create `run_setting`; migrate flags + rules |
+| 15 | `migrations/016_drop_legacy_tables.sql` | ✅ Drop all 9 legacy tables (new file) |
+| 16 | `internal/db/migrate.go` | ✅ Register migrations 013–016; bump max version to 16 |
+| 17 | `internal/pokeapi/` | ✅ Update all seeders to write to `pokemon` only |
+| 18 | `internal/handlers/` | ✅ Update all queries referencing removed tables |
+| 19 | `internal/legality/` | ✅ Update all queries referencing `pokemon_form`, `pokemon_species`, `pokemon_type`, `pokemon_stats` |
+| 20 | `docs/prds/schema.md` | ✅ Rewrite schema section to reflect 18-table target |
+| 21 | Tests | ✅ Updated all test bootstrap schemas; 103/103 tests passing |
 
 ---
 

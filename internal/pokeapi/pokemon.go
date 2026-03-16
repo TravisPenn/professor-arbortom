@@ -142,23 +142,7 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Upsert species
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_species (id, name) VALUES (?, ?)`,
-		speciesID, poke.Species.Name,
-	); err != nil {
-		return fmt.Errorf("pokeapi: insert species %s: %w", poke.Species.Name, err)
-	}
-
-	// Upsert form
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_form (id, species_id, form_name) VALUES (?, ?, ?)`,
-		poke.ID, speciesID, "default",
-	); err != nil {
-		return fmt.Errorf("pokeapi: insert form %d: %w", poke.ID, err)
-	}
-
-	// Upsert types (COACH-004)
+	// Collect types
 	var type1, type2 string
 	for _, t := range poke.Types {
 		if t.Slot == 1 {
@@ -166,55 +150,31 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 		} else if t.Slot == 2 {
 			type2 = t.Type.Name
 		}
-		if _, err := tx.Exec(
-			`INSERT OR IGNORE INTO pokemon_type (form_id, slot, type_name) VALUES (?, ?, ?)`,
-			poke.ID, t.Slot, t.Type.Name,
-		); err != nil {
-			logWarn("insert type %s for form %d: %v", t.Type.Name, poke.ID, err)
-		}
 	}
 	if type1 == "" {
 		type1 = "normal"
 	}
 
-	// Upsert base stats (COACH-004)
+	// Collect base stats
 	statMap := make(map[string]int, 6)
 	for _, s := range poke.Stats {
 		statMap[s.Stat.Name] = s.BaseStat
 	}
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_stats (form_id, hp, attack, defense, sp_attack, sp_defense, speed)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		poke.ID,
-		statMap["hp"], statMap["attack"], statMap["defense"],
-		statMap["special-attack"], statMap["special-defense"], statMap["speed"],
-	); err != nil {
-		logWarn("insert stats for form %d: %v", poke.ID, err)
-	}
 
-	// Upsert abilities (COACH-004)
+	// Collect abilities (non-hidden only)
 	var ability1, ability2 string
 	for _, a := range poke.Abilities {
-		slot := a.Slot
 		if a.IsHidden {
-			slot = 3
+			continue
 		}
-		if !a.IsHidden {
-			if slot == 1 {
-				ability1 = a.Ability.Name
-			} else if slot == 2 {
-				ability2 = a.Ability.Name
-			}
-		}
-		if _, err := tx.Exec(
-			`INSERT OR IGNORE INTO pokemon_ability (form_id, slot, ability_name) VALUES (?, ?, ?)`,
-			poke.ID, slot, a.Ability.Name,
-		); err != nil {
-			logWarn("insert ability %s for form %d: %v", a.Ability.Name, poke.ID, err)
+		if a.Slot == 1 {
+			ability1 = a.Ability.Name
+		} else if a.Slot == 2 {
+			ability2 = a.Ability.Name
 		}
 	}
 
-	// SC-001 compatibility: mirror data into consolidated pokemon table.
+	// Upsert into consolidated pokemon table (SC-001)
 	if _, err := tx.Exec(`
 		INSERT OR REPLACE INTO pokemon
 			(id, species_name, form_name, type1, type2,
@@ -226,7 +186,7 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 		statMap["special-attack"], statMap["special-defense"], statMap["speed"],
 		ability1, ability2,
 	); err != nil {
-		logWarn("insert consolidated pokemon %d: %v", poke.ID, err)
+		return fmt.Errorf("pokeapi: insert pokemon %d: %w", poke.ID, err)
 	}
 
 	// Upsert moves and learnset entries

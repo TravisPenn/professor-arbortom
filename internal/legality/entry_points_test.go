@@ -27,23 +27,24 @@ func setupRunDB(t *testing.T, cfg runCfg) (*sql.DB, int) {
 	mustExec(t, db,
 		`CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT UNIQUE)`)
 	mustExec(t, db,
-		`CREATE TABLE run (id INTEGER PRIMARY KEY, user_id INTEGER, version_id INTEGER, name TEXT)`)
+		`CREATE TABLE run (id INTEGER PRIMARY KEY, user_id INTEGER, version_id INTEGER, name TEXT,
+		 badge_count INTEGER NOT NULL DEFAULT 0, current_location_id INTEGER, progress_updated_at TEXT)`)
 	mustExec(t, db,
-		`CREATE TABLE run_progress (run_id INTEGER PRIMARY KEY, badge_count INTEGER DEFAULT 0, current_location_id INTEGER)`)
-	mustExec(t, db,
-		`CREATE TABLE rule_def (id INTEGER PRIMARY KEY, key TEXT)`)
-	mustExec(t, db,
-		`CREATE TABLE run_rule (id INTEGER PRIMARY KEY, run_id INTEGER, rule_def_id INTEGER, enabled INTEGER DEFAULT 0, params_json TEXT DEFAULT '{}')`)
-	mustExec(t, db,
-		`CREATE TABLE run_flag (run_id INTEGER, key TEXT, value TEXT)`)
+		`CREATE TABLE run_setting (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id INTEGER NOT NULL,
+			type TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL DEFAULT 'true',
+			UNIQUE(run_id, type, key)
+		)`)
 
 	mustExec(t, db, `INSERT INTO game_version VALUES (?, ?, ?, 3)`,
 		cfg.versionID, "firered", cfg.versionGroupID)
 	mustExec(t, db, `INSERT INTO user VALUES (1, 'tester')`)
-	mustExec(t, db, `INSERT INTO run VALUES (1, 1, ?, 'test run')`, cfg.versionID)
 	mustExec(t, db,
-		`INSERT INTO run_progress (run_id, badge_count, current_location_id) VALUES (1, ?, ?)`,
-		cfg.badgeCount, cfg.locationID)
+		`INSERT INTO run (id, user_id, version_id, name, badge_count, current_location_id) VALUES (1, 1, ?, 'test run', ?, ?)`,
+		cfg.versionID, cfg.badgeCount, cfg.locationID)
 	return db, 1
 }
 
@@ -63,22 +64,24 @@ func TestLegalAcquisitions_WithLevelCap(t *testing.T) {
 		versionID: 10, versionGroupID: 7, badgeCount: 2, locationID: &locID,
 	})
 
-	mustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
-	mustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE pokemon (
+		id INTEGER PRIMARY KEY, species_name TEXT NOT NULL, form_name TEXT NOT NULL DEFAULT 'default',
+		type1 TEXT NOT NULL DEFAULT 'normal', type2 TEXT,
+		hp INTEGER NOT NULL DEFAULT 0, attack INTEGER NOT NULL DEFAULT 0, defense INTEGER NOT NULL DEFAULT 0,
+		sp_attack INTEGER NOT NULL DEFAULT 0, sp_defense INTEGER NOT NULL DEFAULT 0, speed INTEGER NOT NULL DEFAULT 0,
+		ability1 TEXT, ability2 TEXT)`)
 	mustExec(t, db, `CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT, version_id INTEGER, region TEXT)`)
 	mustExec(t, db, `CREATE TABLE encounter (id INTEGER PRIMARY KEY, location_id INTEGER, form_id INTEGER,
 		version_id INTEGER, min_level INTEGER, max_level INTEGER, method TEXT, conditions_json TEXT)`)
 	mustExec(t, db, `CREATE TABLE gen3_badge_cap (badge_count INTEGER PRIMARY KEY, level_cap INTEGER)`)
 
-	mustExec(t, db, `INSERT INTO pokemon_species VALUES (1,'ekans'),(2,'rattata')`)
-	mustExec(t, db, `INSERT INTO pokemon_form VALUES (101,1,'default'),(102,2,'default')`)
+	mustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (101,'ekans'),(102,'rattata')`)
 	mustExec(t, db, `INSERT INTO location VALUES (10,'Route 1',10,'kanto')`)
 	// ekans: min_level 35 — above cap; rattata: min_level 2 — within cap
 	mustExec(t, db, `INSERT INTO encounter VALUES (1,10,101,10,35,40,'walk','[]')`)
 	mustExec(t, db, `INSERT INTO encounter VALUES (2,10,102,10,2,4,'walk','[]')`)
-	mustExec(t, db, `INSERT INTO rule_def VALUES (1,'level_cap')`)
-	mustExec(t, db, `INSERT INTO run_rule VALUES (1,1,1,1,'{}')`) // level_cap enabled
-	mustExec(t, db, `INSERT INTO gen3_badge_cap VALUES (2,25)`)   // badge 2 → cap 25
+	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'level_cap', '{}')`) // level_cap enabled
+	mustExec(t, db, `INSERT INTO gen3_badge_cap VALUES (2,25)`)                                                 // badge 2 → cap 25
 
 	acqs, _, err := LegalAcquisitions(db, runID)
 	if err != nil {
@@ -170,8 +173,8 @@ func TestLegalMoves_LevelCapBlocksHighLevel(t *testing.T) {
 	mustExec(t, db, `CREATE TABLE learnset_entry (
 		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
 	mustExec(t, db, `CREATE TABLE gen3_badge_cap (badge_count INTEGER PRIMARY KEY, level_cap INTEGER)`)
-	mustExec(t, db, `INSERT INTO rule_def VALUES (1,'level_cap')`)
-	mustExec(t, db, `INSERT INTO run_rule VALUES (1,1,1,1,'{}')`)
+	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'level_cap', '{}')`)
+	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'no_trade_evolutions', '{}')`)
 	mustExec(t, db, `INSERT INTO gen3_badge_cap VALUES (1,20)`)
 
 	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'hyper-beam','normal')`)
@@ -260,17 +263,19 @@ func TestLegalItems_OwnedNotDuplicatedAsObtainable(t *testing.T) {
 func TestEvolutionOptions_TradeBlocked(t *testing.T) {
 	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7})
 
-	mustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
-	mustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE pokemon (
+		id INTEGER PRIMARY KEY, species_name TEXT NOT NULL, form_name TEXT NOT NULL DEFAULT 'default',
+		type1 TEXT NOT NULL DEFAULT 'normal', type2 TEXT,
+		hp INTEGER NOT NULL DEFAULT 0, attack INTEGER NOT NULL DEFAULT 0, defense INTEGER NOT NULL DEFAULT 0,
+		sp_attack INTEGER NOT NULL DEFAULT 0, sp_defense INTEGER NOT NULL DEFAULT 0, speed INTEGER NOT NULL DEFAULT 0,
+		ability1 TEXT, ability2 TEXT)`)
 	mustExec(t, db, `CREATE TABLE evolution_condition (
 		id INTEGER PRIMARY KEY, from_form_id INTEGER, to_form_id INTEGER, trigger TEXT, conditions_json TEXT)`)
 	mustExec(t, db, `CREATE TABLE gen3_badge_cap (badge_count INTEGER PRIMARY KEY, level_cap INTEGER)`)
 
-	mustExec(t, db, `INSERT INTO pokemon_species VALUES (1,'haunter'),(2,'gengar')`)
-	mustExec(t, db, `INSERT INTO pokemon_form VALUES (10,1,'default'),(11,2,'default')`)
+	mustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (10,'haunter'),(11,'gengar')`)
 	mustExec(t, db, `INSERT INTO evolution_condition VALUES (1,10,11,'trade','{}')`)
-	mustExec(t, db, `INSERT INTO rule_def VALUES (1,'no_trade_evolutions')`)
-	mustExec(t, db, `INSERT INTO run_rule VALUES (1,1,1,1,'{}')`) // enabled
+	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'no_trade_evolutions', '{}')`)
 
 	evos, err := EvolutionOptions(db, runID, 10)
 	if err != nil {
@@ -290,17 +295,19 @@ func TestEvolutionOptions_TradeBlocked(t *testing.T) {
 func TestEvolutionOptions_LevelUpPossible(t *testing.T) {
 	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, badgeCount: 5})
 
-	mustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
-	mustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE pokemon (
+		id INTEGER PRIMARY KEY, species_name TEXT NOT NULL, form_name TEXT NOT NULL DEFAULT 'default',
+		type1 TEXT NOT NULL DEFAULT 'normal', type2 TEXT,
+		hp INTEGER NOT NULL DEFAULT 0, attack INTEGER NOT NULL DEFAULT 0, defense INTEGER NOT NULL DEFAULT 0,
+		sp_attack INTEGER NOT NULL DEFAULT 0, sp_defense INTEGER NOT NULL DEFAULT 0, speed INTEGER NOT NULL DEFAULT 0,
+		ability1 TEXT, ability2 TEXT)`)
 	mustExec(t, db, `CREATE TABLE evolution_condition (
 		id INTEGER PRIMARY KEY, from_form_id INTEGER, to_form_id INTEGER, trigger TEXT, conditions_json TEXT)`)
 	mustExec(t, db, `CREATE TABLE gen3_badge_cap (badge_count INTEGER PRIMARY KEY, level_cap INTEGER)`)
 	mustExec(t, db, `INSERT INTO gen3_badge_cap VALUES (5,45)`)
-	mustExec(t, db, `INSERT INTO rule_def VALUES (1,'level_cap')`)
-	mustExec(t, db, `INSERT INTO run_rule VALUES (1,1,1,1,'{}')`) // level_cap enabled
+	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'level_cap', '{}')`)
 
-	mustExec(t, db, `INSERT INTO pokemon_species VALUES (1,'magikarp'),(2,'gyarados')`)
-	mustExec(t, db, `INSERT INTO pokemon_form VALUES (10,1,'default'),(11,2,'default')`)
+	mustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (10,'magikarp'),(11,'gyarados')`)
 	// Evolves at level 20, which is within cap 45
 	mustExec(t, db, `INSERT INTO evolution_condition VALUES (1,10,11,'level-up','{"min_level":20}')`)
 
@@ -514,8 +521,12 @@ func setupCoachMovesDB(t *testing.T) (*sql.DB, int) {
 	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT)`)
 	mustExec(t, db, `CREATE TABLE learnset_entry (
 		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
-	mustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
-	mustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE pokemon (
+		id INTEGER PRIMARY KEY, species_name TEXT NOT NULL, form_name TEXT NOT NULL DEFAULT 'default',
+		type1 TEXT, type2 TEXT,
+		hp INTEGER, attack INTEGER, defense INTEGER,
+		sp_attack INTEGER, sp_defense INTEGER, speed INTEGER,
+		ability1 TEXT, ability2 TEXT)`)
 	mustExec(t, db, `CREATE TABLE evolution_condition (
 		id INTEGER PRIMARY KEY, from_form_id INTEGER, to_form_id INTEGER, trigger TEXT, conditions_json TEXT)`)
 	mustExec(t, db, `CREATE TABLE tm_move (tm_number INTEGER PRIMARY KEY, move_name TEXT NOT NULL)`)
@@ -588,8 +599,7 @@ func TestCoachMoves_EvoNoteAnnotated(t *testing.T) {
 
 	// bulbasaur (form 1) learns razor-leaf at lv20
 	// its evolution ivysaur (form 2) learns razor-leaf at lv15 (sooner)
-	mustExec(t, db, `INSERT INTO pokemon_species VALUES (1,'bulbasaur'),(2,'ivysaur')`)
-	mustExec(t, db, `INSERT INTO pokemon_form VALUES (1,1,'default'),(2,2,'default')`)
+	mustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (1,'bulbasaur'),(2,'ivysaur')`)
 	mustExec(t, db, `INSERT INTO evolution_condition VALUES (1,1,2,'level-up','{"min_level":16}')`)
 	mustExec(t, db, `INSERT INTO move VALUES (1,'razor-leaf','grass')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (1,1,7,'level-up',20)`) // bulbasaur lv20
