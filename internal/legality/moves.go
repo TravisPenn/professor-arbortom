@@ -25,7 +25,12 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 			m.name,
 			m.type_name,
 			le.learn_method,
-			le.level_learned
+			le.level_learned,
+			m.power,
+			m.accuracy,
+			m.pp,
+			COALESCE(m.damage_class, '') AS damage_class,
+			COALESCE(m.effect_entry, '')  AS effect_entry
 		FROM learnset_entry le
 		JOIN move m ON m.id = le.move_id
 		WHERE le.form_id = ?
@@ -42,9 +47,20 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 
 	for rows.Next() {
 		var mv Move
-		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned); err != nil {
+		var power, accuracy sql.NullInt64
+		var pp int
+		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned, &power, &accuracy, &pp, &mv.DamageClass, &mv.Effect); err != nil {
 			return nil, nil, err
 		}
+		if power.Valid {
+			v := int(power.Int64)
+			mv.Power = &v
+		}
+		if accuracy.Valid {
+			v := int(accuracy.Int64)
+			mv.Accuracy = &v
+		}
+		mv.PP = pp
 
 		// Annotate level-up moves blocked by cap
 		if cap > 0 && mv.LearnMethod == "level-up" && mv.LevelLearned > cap {
@@ -111,9 +127,12 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 
 	rows, err := db.Query(`
 		SELECT m.id, m.name, m.type_name, le.learn_method, le.level_learned,
+		       m.power, m.accuracy, m.pp,
 		       COALESCE(tm.tm_number, 0)       AS tm_number,
 		       COALESCE(hm.hm_number, 0)       AS hm_number,
-		       COALESCE(tut.location_name, '') AS tutor_location
+		       COALESCE(tut.location_name, '') AS tutor_location,
+		       COALESCE(m.damage_class, '')    AS damage_class,
+		       COALESCE(m.effect_entry, '')    AS effect_entry
 		FROM learnset_entry le
 		JOIN move m ON m.id = le.move_id
 		LEFT JOIN tm_move tm ON (le.learn_method = 'machine' AND m.name = tm.move_name)
@@ -136,10 +155,23 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 	var moves []Move
 	for rows.Next() {
 		var mv Move
+		var power, accuracy sql.NullInt64
+		var pp int
 		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned,
-			&mv.TMNumber, &mv.HMNumber, &mv.TutorLocation); err != nil {
+			&power, &accuracy, &pp,
+			&mv.TMNumber, &mv.HMNumber, &mv.TutorLocation,
+			&mv.DamageClass, &mv.Effect); err != nil {
 			return nil, err
 		}
+		if power.Valid {
+			v := int(power.Int64)
+			mv.Power = &v
+		}
+		if accuracy.Valid {
+			v := int(accuracy.Int64)
+			mv.Accuracy = &v
+		}
+		mv.PP = pp
 		// Skip level-up moves the Pokémon has already had the chance to learn.
 		if mv.LearnMethod == "level-up" && currentLevel > 0 && mv.LevelLearned <= currentLevel {
 			continue

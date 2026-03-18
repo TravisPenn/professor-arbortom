@@ -59,6 +59,15 @@ type moveResponse struct {
 	Type     struct {
 		Name string `json:"name"`
 	} `json:"type"`
+	DamageClass struct {
+		Name string `json:"name"`
+	} `json:"damage_class"`
+	EffectEntries []struct {
+		ShortEffect string `json:"short_effect"`
+		Language    struct {
+			Name string `json:"name"`
+		} `json:"language"`
+	} `json:"effect_entries"`
 }
 
 // EnsurePokemon fetches and caches species, form, and learnset data for the given
@@ -205,9 +214,16 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 			if mv.Accuracy != nil {
 				accuracy = *mv.Accuracy
 			}
+			effectEntry := ""
+			for _, e := range mv.EffectEntries {
+				if e.Language.Name == "en" {
+					effectEntry = e.ShortEffect
+					break
+				}
+			}
 			if _, insertErr := tx.Exec(
-				`INSERT OR IGNORE INTO move (id, name, type_name, power, accuracy, pp) VALUES (?,?,?,?,?,?)`,
-				mv.ID, mv.Name, mv.Type.Name, power, accuracy, mv.PP,
+				`INSERT OR IGNORE INTO move (id, name, type_name, power, accuracy, pp, damage_class, effect_entry) VALUES (?,?,?,?,?,?,?,?)`,
+				mv.ID, mv.Name, mv.Type.Name, power, accuracy, mv.PP, mv.DamageClass.Name, effectEntry,
 			); insertErr != nil {
 				logWarn("insert move %s: %v", entry.moveName, insertErr)
 				continue

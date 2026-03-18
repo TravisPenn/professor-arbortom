@@ -35,6 +35,11 @@ func moveToOption(m legality.Move) MoveOption {
 		TMNumber:      m.TMNumber,
 		HMNumber:      m.HMNumber,
 		TutorLocation: m.TutorLocation,
+		Power:         m.Power,
+		Accuracy:      m.Accuracy,
+		PP:            m.PP,
+		DamageClass:   m.DamageClass,
+		Effect:        m.Effect,
 	}
 }
 

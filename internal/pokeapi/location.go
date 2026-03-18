@@ -98,7 +98,7 @@ func (c *Client) EnsureLocationEncounters(db *sql.DB, locationAreaID, versionID 
 		seenForms[formID] = true
 
 		var exists int
-		db.QueryRow(`SELECT COUNT(*) FROM pokemon_form WHERE id = ?`, formID).Scan(&exists) //nolint:errcheck
+		db.QueryRow(`SELECT COUNT(*) FROM pokemon WHERE id = ?`, formID).Scan(&exists) //nolint:errcheck
 		if exists > 0 {
 			continue
 		}
@@ -164,7 +164,7 @@ func (c *Client) EnsureLocationEncounters(db *sql.DB, locationAreaID, versionID 
 
 				// Skip if EnsurePokemon failed for this form earlier.
 				var exists int
-				tx.QueryRow(`SELECT COUNT(*) FROM pokemon_form WHERE id = ?`, formID).Scan(&exists) //nolint:errcheck
+				tx.QueryRow(`SELECT COUNT(*) FROM pokemon WHERE id = ?`, formID).Scan(&exists) //nolint:errcheck
 				if exists == 0 {
 					continue
 				}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -138,6 +139,9 @@ func main() {
 				return "?"
 			}
 		},
+		"lower": strings.ToLower,
+		"title": strings.Title, //nolint:staticcheck // acceptable for display
+		"join":  strings.Join,
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(poketemplates.FS, "*.html")
 	if err != nil {

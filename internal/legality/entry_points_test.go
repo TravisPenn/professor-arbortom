@@ -126,11 +126,11 @@ func TestLegalAcquisitions_NoLocation(t *testing.T) {
 func TestLegalMoves_HMBlocked(t *testing.T) {
 	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7})
 
-	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT, power INTEGER, accuracy INTEGER, pp INTEGER NOT NULL DEFAULT 0, damage_class TEXT, effect_entry TEXT)`)
 	mustExec(t, db, `CREATE TABLE learnset_entry (
 		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
 
-	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'surf','water')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'tackle','normal'),(2,'surf','water')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`) // tackle
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'machine',0)`)  // surf
 
@@ -169,7 +169,7 @@ func TestLegalMoves_HMBlocked(t *testing.T) {
 func TestLegalMoves_LevelCapBlocksHighLevel(t *testing.T) {
 	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, badgeCount: 1})
 
-	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT, power INTEGER, accuracy INTEGER, pp INTEGER NOT NULL DEFAULT 0, damage_class TEXT, effect_entry TEXT)`)
 	mustExec(t, db, `CREATE TABLE learnset_entry (
 		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
 	mustExec(t, db, `CREATE TABLE gen3_badge_cap (badge_count INTEGER PRIMARY KEY, level_cap INTEGER)`)
@@ -177,7 +177,7 @@ func TestLegalMoves_LevelCapBlocksHighLevel(t *testing.T) {
 	mustExec(t, db, `INSERT INTO run_setting (run_id, type, key, value) VALUES (1, 'rule', 'no_trade_evolutions', '{}')`)
 	mustExec(t, db, `INSERT INTO gen3_badge_cap VALUES (1,20)`)
 
-	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'hyper-beam','normal')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'tackle','normal'),(2,'hyper-beam','normal')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`)  // level 1 - within cap
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'level-up',40)`) // level 40 - above cap 20
 
@@ -518,7 +518,7 @@ func TestShopItems_WrongLocation(t *testing.T) {
 func setupCoachMovesDB(t *testing.T) (*sql.DB, int) {
 	t.Helper()
 	db, runID := setupRunDB(t, runCfg{versionID: 10, versionGroupID: 7, badgeCount: 0})
-	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT)`)
+	mustExec(t, db, `CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT, type_name TEXT, power INTEGER, accuracy INTEGER, pp INTEGER NOT NULL DEFAULT 0, damage_class TEXT, effect_entry TEXT)`)
 	mustExec(t, db, `CREATE TABLE learnset_entry (
 		form_id INTEGER, move_id INTEGER, version_group_id INTEGER, learn_method TEXT, level_learned INTEGER)`)
 	mustExec(t, db, `CREATE TABLE pokemon (
@@ -540,7 +540,7 @@ func setupCoachMovesDB(t *testing.T) (*sql.DB, int) {
 
 func TestCoachMoves_ExcludesEggMoves(t *testing.T) {
 	db, runID := setupCoachMovesDB(t)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'dragon-rage','dragon')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'tackle','normal'),(2,'dragon-rage','dragon')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',5)`) // kept
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'egg',0)`)      // filtered
 
@@ -560,7 +560,7 @@ func TestCoachMoves_ExcludesEggMoves(t *testing.T) {
 
 func TestCoachMoves_FiltersAlreadyLearnableLevelUp(t *testing.T) {
 	db, runID := setupCoachMovesDB(t)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'growl','normal'),(3,'vine-whip','grass')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'tackle','normal'),(2,'growl','normal'),(3,'vine-whip','grass')`)
 	// currentLevel = 15; Lv1 and Lv10 should be filtered, Lv16 should appear
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'level-up',10)`)
@@ -580,7 +580,7 @@ func TestCoachMoves_FiltersAlreadyLearnableLevelUp(t *testing.T) {
 
 func TestCoachMoves_ZeroCurrentLevelSkipsFilter(t *testing.T) {
 	db, runID := setupCoachMovesDB(t)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'tackle','normal'),(2,'growl','normal')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'tackle','normal'),(2,'growl','normal')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'level-up',1)`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,2,7,'level-up',3)`)
 
@@ -601,7 +601,7 @@ func TestCoachMoves_EvoNoteAnnotated(t *testing.T) {
 	// its evolution ivysaur (form 2) learns razor-leaf at lv15 (sooner)
 	mustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (1,'bulbasaur'),(2,'ivysaur')`)
 	mustExec(t, db, `INSERT INTO evolution_condition VALUES (1,1,2,'level-up','{"min_level":16}')`)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'razor-leaf','grass')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'razor-leaf','grass')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (1,1,7,'level-up',20)`) // bulbasaur lv20
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (2,1,7,'level-up',15)`) // ivysaur lv15 (sooner ↑)
 
@@ -620,7 +620,7 @@ func TestCoachMoves_EvoNoteAnnotated(t *testing.T) {
 
 func TestCoachMoves_HMNumberAnnotated(t *testing.T) {
 	db, runID := setupCoachMovesDB(t)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'surf','water')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'surf','water')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'machine',0)`)
 	mustExec(t, db, `INSERT INTO hm_move VALUES (3,'surf')`)
 
@@ -641,7 +641,7 @@ func TestCoachMoves_HMNumberAnnotated(t *testing.T) {
 
 func TestCoachMoves_TutorLocationAnnotated(t *testing.T) {
 	db, runID := setupCoachMovesDB(t)
-	mustExec(t, db, `INSERT INTO move VALUES (1,'dream-eater','psychic')`)
+	mustExec(t, db, `INSERT INTO move (id,name,type_name) VALUES (1,'dream-eater','psychic')`)
 	mustExec(t, db, `INSERT INTO learnset_entry VALUES (5,1,7,'tutor',0)`)
 	mustExec(t, db, `INSERT INTO tutor_move VALUES (1,7,'dream-eater','Viridian City')`)
 
