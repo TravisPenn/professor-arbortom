@@ -7,7 +7,7 @@ import (
 	"github.com/TravisPenn/professor-arbortom/migrations"
 )
 
-const currentVersion = 16
+const currentVersion = 19
 
 // Migrate checks PRAGMA user_version and applies pending migrations.
 // Safe to call on every startup.
@@ -160,7 +160,37 @@ func Migrate(db *sql.DB) error {
 		if err := applyMigration(db, "016_drop_legacy_tables.sql"); err != nil {
 			return fmt.Errorf("db: migration 016: %w", err)
 		}
-		return setUserVersion(db, 16)
+		if err := setUserVersion(db, 16); err != nil {
+			return err
+		}
+		version = 16
+	}
+
+	if version == 16 {
+		if err := applyMigration(db, "017_opponent_teams.sql"); err != nil {
+			return fmt.Errorf("db: migration 017: %w", err)
+		}
+		if err := setUserVersion(db, 17); err != nil {
+			return err
+		}
+		version = 17
+	}
+
+	if version == 17 {
+		if err := applyMigration(db, "018_fix_run_pokemon_fk.sql"); err != nil {
+			return fmt.Errorf("db: migration 018: %w", err)
+		}
+		if err := setUserVersion(db, 18); err != nil {
+			return err
+		}
+		version = 18
+	}
+
+	if version == 18 {
+		if err := applyMigration(db, "019_move_tooltip_fields.sql"); err != nil {
+			return fmt.Errorf("db: migration 019: %w", err)
+		}
+		return setUserVersion(db, 19)
 	}
 
 	return fmt.Errorf("db: unknown user_version %d", version)

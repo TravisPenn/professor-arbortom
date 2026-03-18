@@ -31,7 +31,7 @@
         </td>
         <td>{{if .Level}}Lv&nbsp;{{deref .Level}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="team-move-list">
-          {{range .MoveNames}}{{if .}}<span class="move-chip">{{.}}</span>{{end}}{{end}}
+          {{range .Moves}}{{if .Name}}<span class="move-chip" title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}}{{if .PP}} · PP {{.PP}}{{end}}{{if .Effect}} · {{.Effect}}{{end}}">{{.Name}}</span>{{end}}{{end}}
         </td>
         <td><a href="/runs/{{$.RunContext.ID}}/team/{{.Slot}}" class="btn btn-sm">Edit</a></td>
       </tr>

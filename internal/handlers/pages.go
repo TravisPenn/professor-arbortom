@@ -99,6 +99,17 @@ type TeamPage struct {
 	LegalityErrors map[string]string
 }
 
+// MoveChip carries the data needed to render a move pill with a hover tooltip
+// on the team overview page.
+type MoveChip struct {
+	Name        string
+	DamageClass string // "physical", "special", "status", or ""
+	Power       *int
+	Accuracy    *int
+	PP          int
+	Effect      string
+}
+
 type PartySlot struct {
 	Slot         int
 	FormID       *int
@@ -107,6 +118,7 @@ type PartySlot struct {
 	Level        *int
 	MoveIDs      [4]*int
 	MoveNames    [4]string
+	Moves        [4]MoveChip // populated for overview tooltips
 	HeldItemID   *int
 	HeldItemName string
 	LegalMoves   []MoveOption
@@ -130,6 +142,11 @@ type MoveOption struct {
 	TMNumber      int
 	HMNumber      int
 	TutorLocation string
+	Power         *int // nil for status moves
+	Accuracy      *int // nil for never-miss moves
+	PP            int
+	DamageClass   string // "physical", "special", "status", or "" if not seeded
+	Effect        string // short description, or "" if not seeded
 }
 
 type ItemOption struct {
@@ -263,6 +280,7 @@ type CoachPage struct {
 	CoachAnswer    *CoachAnswer
 	PlayerQuestion string
 	TeamInsights   *TeamInsights
+	NextOpponents  []OpponentSummary // COACH-015
 }
 
 // TeamInsights holds pre-computed analysis rendered in the coach panel regardless of AI coach availability.
@@ -342,4 +360,24 @@ type TeamAnalysisPayload struct {
 	Resistances    []string    `json:"resistances"`
 	Immunities     []string    `json:"immunities"`
 	UncoveredTypes []string    `json:"uncovered_types"`
+}
+
+// ─── Coach opponent types (COACH-015) ────────────────────────────────────────
+
+// OpponentSummary is one gym leader or Elite Four member.
+type OpponentSummary struct {
+	Name          string            `json:"name"`
+	TypeSpecialty string            `json:"type_specialty"`
+	LocationName  string            `json:"location_name"`
+	BadgeOrder    int               `json:"badge_order"`
+	Team          []OpponentPokemon `json:"team"`
+}
+
+// OpponentPokemon is one party member in an opponent's team.
+type OpponentPokemon struct {
+	SpeciesName string   `json:"species_name"`
+	Level       int      `json:"level"`
+	Types       []string `json:"types,omitempty"`
+	HeldItem    string   `json:"held_item,omitempty"`
+	Moves       []string `json:"moves,omitempty"`
 }

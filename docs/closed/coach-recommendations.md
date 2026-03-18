@@ -1,8 +1,9 @@
 # PokémonProfessor — AI Coach: Actionable Recommendations
 
-**Status**: Not started
+**Status**: Complete
 **Priority**: High
 **Date**: 2026-03-15
+**Completed**: 2026-03-16
 
 Cross-reference: [architecture.md](architecture.md), [schema.md](schema.md),
 [coach-enrichment.md](coach-enrichment.md), [coach-ollama-migration.md](coach-ollama-migration.md).
@@ -134,13 +135,13 @@ fully replaces the default. No change to `QueryCoach`; the existing path already
 
 ### Acceptance Criteria
 
-- [ ] `NewCoachClient("http://host", "qwen2.5:3b", "")` sets `systemPrompt` to `defaultSystemPrompt`.
-- [ ] `NewCoachClient("http://host", "qwen2.5:3b", "custom prompt")` sets `systemPrompt` to `"custom prompt"`.
-- [ ] `COACH_SYSTEM_PROMPT=""` in env → `NewCoachClient` receives `""` → default prompt is used.
-- [ ] `COACH_SYSTEM_PROMPT="x"` in env → `NewCoachClient` receives `"x"` → default is not used.
-- [ ] The Ollama request body includes a `system` role message in both cases.
-- [ ] Unit test: `NewCoachClient("", "", "")` → `c.systemPrompt == defaultSystemPrompt`.
-- [ ] `go test ./internal/services/...` passes.
+- [x] `NewCoachClient("http://host", "qwen2.5:3b", "")` sets `systemPrompt` to `defaultSystemPrompt`.
+- [x] `NewCoachClient("http://host", "qwen2.5:3b", "custom prompt")` sets `systemPrompt` to `"custom prompt"`.
+- [x] `COACH_SYSTEM_PROMPT=""` in env → `NewCoachClient` receives `""` → default prompt is used.
+- [x] `COACH_SYSTEM_PROMPT="x"` in env → `NewCoachClient` receives `"x"` → default is not used.
+- [x] The Ollama request body includes a `system` role message in both cases.
+- [x] Unit test: `NewCoachClient("", "", "")` → `c.systemPrompt == defaultSystemPrompt`.
+- [x] `go test ./internal/services/...` passes.
 
 ---
 
@@ -230,23 +231,29 @@ type MoveOption struct {
 
 ### Acceptance Criteria
 
-- [ ] `CoachMoves()` for a Pokémon with level-up moves returns `Move.Power != nil` for all damaging moves.
-- [ ] `CoachMoves()` returns `Move.Power == nil` for status moves (e.g. Growl, Swords Dance).
-- [ ] `MoveOption.Power` is populated in `buildCoachPage` via `moveToOption()`.
-- [ ] The `party_moves` block in the Coach JSON payload includes `"power"` for damaging moves.
-- [ ] `go test ./internal/legality/...` passes — no existing move tests broken.
-- [ ] No new migration required.
+- [x] `CoachMoves()` for a Pokémon with level-up moves returns `Move.Power != nil` for all damaging moves.
+- [x] `CoachMoves()` returns `Move.Power == nil` for status moves (e.g. Growl, Swords Dance).
+- [x] `MoveOption.Power` is populated in `buildCoachPage` via `moveToOption()`.
+- [x] The `party_moves` block in the Coach JSON payload includes `"power"` for damaging moves.
+- [x] `go test ./internal/legality/...` passes — no existing move tests broken.
+- [x] No new migration required.
 
 ---
 
 ## COACH-014 · Gym Leader & Elite Four Schema and Seed Data (HIGH)
 
-**Location**: New migration `016_opponent_teams.sql`
+**Location**: New migration `017_opponent_teams.sql`
+
+> **Implementation note**: the migration was numbered 017 (not 016) because migration 016 was used
+> to drop legacy tables (`pokemon_species`, `pokemon_form`, `run_progress`, `run_rule`, `rule_def`,
+> `run_flag`). The gym leader schema also changed: `gym_leader_pokemon.form_id` references
+> `pokemon(id)` instead of `pokemon_form(id)` (which was dropped), and the `PRAGMA user_version`
+> line is omitted in favour of `migrate.go` managing versions.
 
 ### Problem
 
-There is no opponent data in the database. `badge_count` is tracked in `run_progress` but there is
-no mapping from badge number to gym leader name, type specialty, location, or party. The Coach
+There is no opponent data in the database. `badge_count` is tracked in the `run` table but there
+is no mapping from badge number to gym leader name, type specialty, location, or party. The Coach
 cannot answer "what's the next gym?" or "should I have Ground coverage soon?"
 
 ### Schema
@@ -345,14 +352,14 @@ include an inline comment mapping each `form_id` to species name for maintainabi
 
 ### Acceptance Criteria
 
-- [ ] `SELECT COUNT(*) FROM gym_leader` returns 65 (13 leaders × 5 versions).
-- [ ] `SELECT COUNT(*) FROM gym_leader WHERE badge_order BETWEEN 1 AND 8` returns 40.
-- [ ] `SELECT name FROM gym_leader WHERE version_id=10 AND badge_order=1` returns `'Brock'`.
-- [ ] `SELECT name FROM gym_leader WHERE version_id=8 AND badge_order=1` returns `'Roxanne'` (Emerald).
-- [ ] `SELECT name FROM gym_leader WHERE version_id=8 AND badge_order=13` returns `'Wallace'` (Emerald Champion).
-- [ ] All `form_id` values in `gym_leader_pokemon` reference existing rows in `pokemon_form`.
-- [ ] `PRAGMA user_version` returns `16` after migration.
-- [ ] Migration applies cleanly on a fresh DB (idempotent `CREATE TABLE IF NOT EXISTS`).
+- [x] `SELECT COUNT(*) FROM gym_leader` returns 65 (13 leaders × 5 versions).
+- [x] `SELECT COUNT(*) FROM gym_leader WHERE badge_order BETWEEN 1 AND 8` returns 40.
+- [x] `SELECT name FROM gym_leader WHERE version_id=10 AND badge_order=1` returns `'Brock'`.
+- [x] `SELECT name FROM gym_leader WHERE version_id=8 AND badge_order=1` returns `'Roxanne'` (Emerald).
+- [x] `SELECT name FROM gym_leader WHERE version_id=8 AND badge_order=13` returns `'Wallace'` (Emerald Champion).
+- [x] All `form_id` values in `gym_leader_pokemon` reference existing rows in `pokemon` (changed from `pokemon_form` — see implementation note above).
+- [x] `PRAGMA user_version` returns `17` after migration (not 16 — see implementation note above).
+- [x] Migration applies cleanly on a fresh DB (idempotent `CREATE TABLE IF NOT EXISTS`).
 
 ---
 
@@ -407,10 +414,9 @@ func nextOpponents(db *sql.DB, runID int) ([]OpponentSummary, error)
 Implementation steps:
 1. Look up `version_id` and `badge_count` for the run via:
    ```sql
-   SELECT r.version_id, COALESCE(rp.badge_count, 0)
-   FROM run r LEFT JOIN run_progress rp ON rp.run_id = r.id
-   WHERE r.id = ?
+   SELECT version_id, COALESCE(badge_count, 0) FROM run WHERE id = ?
    ```
+   (`run_progress` was merged into `run` in migration 014 — `badge_count` is a direct column.)
 2. Call `tableExists(db, "gym_leader")` — return `nil, nil` if false.
 3. Query the next 2 opponents:
    ```sql
@@ -422,14 +428,14 @@ Implementation steps:
    ```
 4. For each leader, fetch the team:
    ```sql
-   SELECT ps.name, glp.level, glp.held_item,
+   SELECT p.species_name, glp.level, glp.held_item,
           glp.move_1, glp.move_2, glp.move_3, glp.move_4
    FROM gym_leader_pokemon glp
-   JOIN pokemon_form pf ON pf.id = glp.form_id
-   JOIN pokemon_species ps ON ps.id = pf.species_id
+   JOIN pokemon p ON p.id = glp.form_id
    WHERE glp.gym_leader_id = ?
    ORDER BY glp.slot
    ```
+   (`pokemon_form`/`pokemon_species` were dropped in migration 016; `pokemon` is the unified table.)
 5. Optionally join `pokemon_type` to populate `OpponentPokemon.Types` (LEFT JOIN; omit if empty).
 6. Return populated `[]OpponentSummary`.
 
@@ -504,30 +510,47 @@ Add `.opponent-card`, `.opponent-location`, `.opponent-team`, `.next-battle` CSS
 
 ### Acceptance Criteria
 
-- [ ] At `badge_count=0`, `nextOpponents()` returns the first gym leader with their full team.
-- [ ] At `badge_count=8`, `nextOpponents()` returns the first Elite Four member.
-- [ ] At `badge_count=13` (post-Champion), `nextOpponents()` returns empty slice.
-- [ ] When `gym_leader` table does not exist, `nextOpponents()` returns `nil, nil`.
-- [ ] Coach payload JSON includes `"next_opponents": [...]` when data is available.
-- [ ] `"next_opponents"` is absent from payload JSON when the slice is empty (omitempty).
-- [ ] Coach page renders "Next Battle" section when `NextOpponents` is non-empty.
-- [ ] Section is absent when `NextOpponents` is empty.
-- [ ] The Coach AI can reference the next opponent by name in a response about team prep.
-- [ ] `go test ./internal/handlers/...` passes.
+- [x] At `badge_count=0`, `nextOpponents()` returns the first gym leader with their full team.
+- [x] At `badge_count=8`, `nextOpponents()` returns the first Elite Four member.
+- [x] At `badge_count=13` (post-Champion), `nextOpponents()` returns empty slice.
+- [x] When `gym_leader` table does not exist, `nextOpponents()` returns `nil, nil`.
+- [x] Coach payload JSON includes `"next_opponents": [...]` when data is available.
+- [x] `"next_opponents"` is absent from payload JSON when the slice is empty (omitempty).
+- [x] Coach page renders "Next Battle" section when `NextOpponents` is non-empty.
+- [x] Section is absent when `NextOpponents` is empty.
+- [x] The Coach AI can reference the next opponent by name in a response about team prep.
+- [x] `go test ./internal/handlers/...` passes.
 
 ---
 
 ## Implementation Order
 
 ```
-COACH-012  (no schema changes — do first, ships improvement immediately)
-COACH-013  (no schema changes — parallel with 012)
-COACH-014  (migration — required before 015)
-COACH-015  (wires 014 into Coach pipeline)
+COACH-012  (no schema changes — do first, ships improvement immediately)  ✅ Done
+COACH-013  (no schema changes — parallel with 012)                        ✅ Done
+COACH-014  (migration — required before 015)                              ✅ Done
+COACH-015  (wires 014 into Coach pipeline)                                ✅ Done
 ```
 
-COACH-012 and COACH-013 are independent of each other and of COACH-014/015. They can ship
-in a single commit before the gym leader data work begins.
+COACH-012 and COACH-013 are independent of each other and of COACH-014/015. Shipped together in
+the same commit as COACH-014/015.
+
+### Additional Migrations (not in original PRD)
+
+The following schema cleanup work was completed alongside COACH-012–015:
+
+| Migration | Description |
+|---|---|
+| `016_drop_legacy_tables.sql` | Drops `pokemon_species`, `pokemon_form`, `pokemon_ability`, `pokemon_stats`, `pokemon_type`, `run_progress`, `run_rule`, `rule_def`, `run_flag`. Rebuilds `game_starter` to reference `pokemon(id)`. |
+| `018_fix_run_pokemon_fk.sql` | Rebuilds `run_pokemon`, `encounter`, `learnset_entry`, `evolution_condition` with `form_id REFERENCES pokemon(id)` to resolve FK violations after 016 dropped `pokemon_form`. |
+
+**Handler fixes** required alongside the schema cleanup:
+- `internal/handlers/runs.go` — removed stale `INSERT INTO run_progress` and `INSERT INTO run_rule / SELECT FROM rule_def` blocks.
+- `internal/handlers/team.go` — all queries rewritten to use `JOIN pokemon p` instead of `JOIN pokemon_form / JOIN pokemon_species`.
+- `internal/handlers/runs.go` (overview query) — same `pokemon_form` → `pokemon` rewrite.
+- `internal/pokeapi/location.go` — existence checks updated from `pokemon_form` → `pokemon`.
+- `internal/pokeapi/evolution.go` — stub-insert updated to write to `pokemon` only (no longer inserts into `pokemon_species`/`pokemon_form`).
+- `internal/db/seeds.go` — `ApplySeedsIfEmpty` skips "no such table" errors gracefully so the bundled pre-016 `seeds.sql` can still apply valid rows without aborting.
 
 ---
 

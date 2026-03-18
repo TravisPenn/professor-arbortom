@@ -144,21 +144,6 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		runID64, _ := res.LastInsertId()
 		runID := int(runID64)
 
-		// Insert run_progress
-		if _, err := db.Exec(`INSERT INTO run_progress (run_id) VALUES (?)`, runID); err != nil {
-			respondError(c, err)
-			return
-		}
-
-		// Insert one run_rule per rule_def (all disabled)
-		if _, err := db.Exec(`
-			INSERT INTO run_rule (run_id, rule_def_id, enabled)
-			SELECT ?, id, 0 FROM rule_def
-		`, runID); err != nil {
-			respondError(c, err)
-			return
-		}
-
 		// Insert starter into run_pokemon: slot 1, level 5, on the party.
 		if _, err := db.Exec(
 			`INSERT INTO run_pokemon (run_id, form_id, level, caught_level, acquisition_type,
@@ -218,10 +203,9 @@ func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 			slots[i].Slot = i + 1
 		}
 		teamRows, err := db.Query(`
-			SELECT rp.party_slot, ps.name, rp.level
+			SELECT rp.party_slot, p.species_name, rp.level
 			FROM run_pokemon rp
-			JOIN pokemon_form pf ON pf.id = rp.form_id
-			JOIN pokemon_species ps ON ps.id = pf.species_id
+			JOIN pokemon p ON p.id = rp.form_id
 			WHERE rp.run_id = ? AND rp.in_party = 1 AND rp.is_alive = 1
 			ORDER BY rp.party_slot
 		`, run.ID)

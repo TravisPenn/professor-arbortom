@@ -40,7 +40,7 @@ func setupPathfindDB(t *testing.T) *sql.DB {
 			form_id INTEGER, version_group_id INTEGER, move_id INTEGER,
 			learn_method TEXT, level_learned INTEGER
 		);
-		CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT UNIQUE, type_name TEXT, power INTEGER, accuracy INTEGER, pp INTEGER NOT NULL DEFAULT 0);
+		CREATE TABLE move (id INTEGER PRIMARY KEY, name TEXT UNIQUE, type_name TEXT, power INTEGER, accuracy INTEGER, pp INTEGER NOT NULL DEFAULT 0, damage_class TEXT, effect_entry TEXT);
 	`)
 
 	// Species: Charmander(4) -> Charmeleon(5) -> Charizard(6)
@@ -69,7 +69,7 @@ func setupPathfindDB(t *testing.T) *sql.DB {
 	condStone, _ := json.Marshal(map[string]interface{}{"item": "thunder-stone"})
 	mustExecPathfind(t, db, `INSERT INTO evolution_condition (from_form_id, to_form_id, trigger, conditions_json) VALUES
 		(25, 26, 'use-item', ?)`, string(condStone))
-	mustExecPathfind(t, db, `INSERT INTO move VALUES (396,'thunderbolt','electric',90,100,15)`)
+	mustExecPathfind(t, db, `INSERT INTO move VALUES (396,'thunderbolt','electric',90,100,15,NULL,NULL)`)
 	mustExecPathfind(t, db, `INSERT INTO learnset_entry (form_id,version_group_id,move_id,learn_method,level_learned) VALUES
 		(25, 7, 396, 'level-up', 26)`) // Pikachu learns Thunderbolt at Lv26
 	// Raichu does NOT learn Thunderbolt via level-up

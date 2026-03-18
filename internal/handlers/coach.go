@@ -191,6 +191,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 	}
 
 	insights, _ := buildTeamInsights(db, runID)
+	opponents, _ := nextOpponents(db, runID)
 
 	return CoachPage{
 		BasePage: BasePage{
@@ -204,6 +205,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 		PartyMoves:     party,
 		LegalItems:     itemOptions,
 		TeamInsights:   insights,
+		NextOpponents:  opponents,
 	}, nil
 }
 
@@ -406,8 +408,101 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 			TeamAnalysis:   teamAnalysis,
 			EvolutionPaths: evolutionPaths,
 			PartyDetails:   partyDetails,
+			NextOpponents:  page.NextOpponents,
 		},
 		Question:    question,
 		ContextNote: contextNote,
 	}, nil
+}
+
+// nextOpponents returns up to 2 upcoming gym leaders / E4 members for the run's
+// current version, ordered by badge_order.
+// Returns nil, nil when the gym_leader table does not yet exist or no leaders remain.
+func nextOpponents(db *sql.DB, runID int) ([]OpponentSummary, error) {
+	if !tableExists(db, "gym_leader") {
+		return nil, nil
+	}
+
+	var versionID, badgeCount int
+	err := db.QueryRow(
+		`SELECT version_id, COALESCE(badge_count, 0) FROM run WHERE id = ?`,
+		runID,
+	).Scan(&versionID, &badgeCount)
+	if err != nil {
+		return nil, nil
+	}
+
+	leaders, err := db.Query(`
+		SELECT id, name, type_specialty, location_name, badge_order
+		FROM gym_leader
+		WHERE version_id = ? AND badge_order > ?
+		ORDER BY badge_order
+		LIMIT 2`,
+		versionID, badgeCount,
+	)
+	if err != nil {
+		return nil, nil
+	}
+	defer leaders.Close()
+
+	var summaries []OpponentSummary
+	for leaders.Next() {
+		var leaderID, badgeOrder int
+		var name, typeSpecialty, locationName string
+		if err := leaders.Scan(&leaderID, &name, &typeSpecialty, &locationName, &badgeOrder); err != nil {
+			continue
+		}
+
+		teamRows, err := db.Query(`
+			SELECT p.species_name, glp.level, COALESCE(glp.held_item,''),
+			       COALESCE(glp.move_1,''), COALESCE(glp.move_2,''),
+			       COALESCE(glp.move_3,''), COALESCE(glp.move_4,''),
+			       COALESCE(p.type1,''), COALESCE(p.type2,'')
+			FROM gym_leader_pokemon glp
+			JOIN pokemon p ON p.id = glp.form_id
+			WHERE glp.gym_leader_id = ? AND glp.starter_variant IS NULL
+			ORDER BY glp.slot`,
+			leaderID,
+		)
+		if err != nil {
+			continue
+		}
+
+		var team []OpponentPokemon
+		for teamRows.Next() {
+			var species, heldItem, m1, m2, m3, m4, t1, t2 string
+			var level int
+			if err := teamRows.Scan(&species, &level, &heldItem, &m1, &m2, &m3, &m4, &t1, &t2); err != nil {
+				continue
+			}
+			op := OpponentPokemon{
+				SpeciesName: species,
+				Level:       level,
+				HeldItem:    heldItem,
+			}
+			if t1 != "" {
+				op.Types = append(op.Types, t1)
+			}
+			if t2 != "" {
+				op.Types = append(op.Types, t2)
+			}
+			for _, mv := range []string{m1, m2, m3, m4} {
+				if mv != "" {
+					op.Moves = append(op.Moves, mv)
+				}
+			}
+			team = append(team, op)
+		}
+		teamRows.Close()
+
+		summaries = append(summaries, OpponentSummary{
+			Name:          name,
+			TypeSpecialty: typeSpecialty,
+			LocationName:  locationName,
+			BadgeOrder:    badgeOrder,
+			Team:          team,
+		})
+	}
+
+	return summaries, nil
 }

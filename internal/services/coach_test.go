@@ -172,7 +172,10 @@ func TestQueryCoach_Truncated(t *testing.T) {
 	}
 }
 
-func TestQueryCoach_NoSystemPromptWhenEmpty(t *testing.T) {
+// TestQueryCoach_DefaultPromptWhenEmpty verifies that passing "" as the system
+// prompt causes NewCoachClient to fall back to defaultSystemPrompt (COACH-012),
+// so the outgoing request always includes a system message as the first message.
+func TestQueryCoach_DefaultPromptWhenEmpty(t *testing.T) {
 	var reqBody struct {
 		Messages []map[string]string `json:"messages"`
 	}
@@ -188,17 +191,49 @@ func TestQueryCoach_NoSystemPromptWhenEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Empty system prompt — messages should only contain the user message.
+	// Empty system prompt → falls back to defaultSystemPrompt → 2 messages: system + user.
 	cc := NewCoachClient(srv.URL, "qwen2.5:3b", "")
 	cc.http.Timeout = 2 * time.Second
 	cc.QueryCoach(1, CoachPayload{Question: "test"})
 
-	if len(reqBody.Messages) != 1 {
-		t.Errorf("expected 1 message (user only), got %d", len(reqBody.Messages))
+	if len(reqBody.Messages) != 2 {
+		t.Errorf("expected 2 messages (system + user), got %d", len(reqBody.Messages))
 	}
-	if len(reqBody.Messages) > 0 && reqBody.Messages[0]["role"] != "user" {
-		t.Errorf("first message role = %q, want %q", reqBody.Messages[0]["role"], "user")
+	if len(reqBody.Messages) > 0 && reqBody.Messages[0]["role"] != "system" {
+		t.Errorf("first message role = %q, want %q", reqBody.Messages[0]["role"], "system")
 	}
+	if len(reqBody.Messages) > 0 {
+		content := reqBody.Messages[0]["content"]
+		if len(content) == 0 {
+			t.Error("system message content should not be empty")
+		}
+	}
+}
+
+// TestNewCoachClient_DefaultPromptWhenEmpty verifies that NewCoachClient sets
+// systemPrompt to defaultSystemPrompt when passed an empty string (COACH-012).
+func TestNewCoachClient_DefaultPromptWhenEmpty(t *testing.T) {
+	cc := NewCoachClient("", "qwen2.5:3b", "")
+	if cc.systemPrompt != defaultSystemPrompt {
+		t.Errorf("systemPrompt = %q, want defaultSystemPrompt", cc.systemPrompt[:min(40, len(cc.systemPrompt))])
+	}
+}
+
+// TestNewCoachClient_ExplicitPromptPreserved verifies that a non-empty system
+// prompt is kept as-is and does not get replaced by the default (COACH-012).
+func TestNewCoachClient_ExplicitPromptPreserved(t *testing.T) {
+	custom := "You are a different coach."
+	cc := NewCoachClient("", "qwen2.5:3b", custom)
+	if cc.systemPrompt != custom {
+		t.Errorf("systemPrompt = %q, want %q", cc.systemPrompt, custom)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ── ValidateConfig (SEC-005) ──────────────────────────────────────────────────

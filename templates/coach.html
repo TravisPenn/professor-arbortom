@@ -65,12 +65,14 @@
         <h3>Slot {{.Slot}} · {{.SpeciesName}}{{if .Level}} <span class="muted">(Lv {{.Level}})</span>{{end}}</h3>
         {{if .Moves}}
         <table class="candidate-table">
-          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th><th>Evo</th></tr></thead>
+          <thead><tr><th>Move</th><th>Type</th><th>Pwr</th><th>Acc</th><th>Learn Method</th><th>Evo</th></tr></thead>
           <tbody>
             {{range .Moves}}
             <tr{{if eq .LearnMethod "evo-exclusive"}} class="row-evo-exclusive"{{else if .EvoNote}} class="row-evo-note"{{end}}>
-              <td>{{if eq .LearnMethod "evo-exclusive"}}<em>{{.Name}}</em>{{else}}{{.Name}}{{end}}</td>
+              <td title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}}{{if .PP}} · PP {{.PP}}{{end}}{{if .Effect}} · {{.Effect}}{{end}}">{{if eq .LearnMethod "evo-exclusive"}}<em>{{.Name}}</em>{{else}}{{.Name}}{{end}}</td>
               <td><span class="type-badge type-{{.TypeName}}">{{.TypeName}}</span></td>
+              <td>{{if .Power}}{{deref .Power}}{{else}}—{{end}}</td>
+              <td>{{if .Accuracy}}{{deref .Accuracy}}{{else}}—{{end}}</td>
               <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}{{if .TMNumber}} (TM{{printf "%02d" .TMNumber}}){{end}}{{if .HMNumber}} (HM{{printf "%02d" .HMNumber}}){{end}}{{if .TutorLocation}} — {{.TutorLocation}}{{end}}</td>
               <td class="muted">{{.EvoNote}}</td>
             </tr>
@@ -109,6 +111,32 @@
 
     <!-- Right: Team Insights + Ask the Professor -->
     <div class="coach-panel">
+
+      {{if .NextOpponents}}
+      <section class="coach-section next-battle">
+        <h2>Next Battle</h2>
+        {{range .NextOpponents}}
+        <div class="opponent-card">
+          <h3>{{.Name}} <span class="type-badge type-{{lower .TypeSpecialty}}">{{.TypeSpecialty | title}}</span></h3>
+          <p class="opponent-location">&#128205; {{.LocationName}}</p>
+          {{if .Team}}
+          <table class="candidate-table opponent-team">
+            <thead><tr><th>Pokémon</th><th>Lv</th><th>Moves</th></tr></thead>
+            <tbody>
+              {{range .Team}}
+              <tr>
+                <td>{{.SpeciesName | title}}</td>
+                <td>{{.Level}}</td>
+                <td class="opponent-moves">{{join .Moves " · "}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+          {{end}}
+        </div>
+        {{end}}
+      </section>
+      {{end}}
 
       {{if .TeamInsights}}
       <section class="coach-insights">
