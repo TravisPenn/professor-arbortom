@@ -50,7 +50,7 @@ multi-part comparisons. Never suggest a fainted Pokémon.`
 type CoachClient struct {
 	host         string // base URL, e.g. "http://ollama-lxc:11434"; empty = disabled
 	model        string // Ollama model name, e.g. "qwen2.5:3b"
-	systemPrompt string // optional; omitted from the request when empty
+	systemPrompt string // persona instructions; always non-empty after NewCoachClient (falls back to defaultSystemPrompt)
 	http         *http.Client
 }
 
@@ -137,12 +137,8 @@ func (c *CoachClient) QueryCoach(_ int, payload CoachPayload) CoachResponse {
 		return CoachResponse{Available: false}
 	}
 
-	messages := make([]map[string]string, 0, 2)
-	if c.systemPrompt != "" {
-		messages = append(messages, map[string]string{
-			"role":    "system",
-			"content": c.systemPrompt,
-		})
+	messages := []map[string]string{
+		{"role": "system", "content": c.systemPrompt},
 	}
 	messages = append(messages, map[string]string{
 		"role":    "user",
