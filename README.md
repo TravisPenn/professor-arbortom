@@ -37,8 +37,9 @@ go run ./cmd/professor-arbortom
 |----------|----------|---------|-------------|
 | `POKEMON_DB_PATH` | yes | — | Path to SQLite DB file (created on first run) |
 | `PORT` | no | `8000` | HTTP listen port |
-| `ZEROCLAW_GATEWAY` | no | `""` | ZeroClaw LXC base URL; blank = AI coach disabled |
-| `ZEROCLAW_AGENT` | no | `""` | ZeroClaw agent profile name |
+| `COACH_HOST` | no | `""` | Ollama base URL (e.g. `http://192.168.1.10:11434`); blank = AI coach disabled |
+| `COACH_MODEL` | no | `qwen2.5:3b` | Ollama model tag to use (ignored when `COACH_HOST` is unset) |
+| `COACH_SYSTEM_PROMPT` | no | built-in | Override the Professor's system prompt |
 
 ## Project Structure
 
@@ -49,11 +50,11 @@ internal/
   pokeapi/              PokeAPI fetch + cache layer
   legality/             Legality engine
   handlers/             Gin HTTP handlers
-  services/             External service clients (ZeroClaw)
+  services/             External service clients (AI Coach / Ollama)
 migrations/             SQL migration files
 templates/              HTML templates (go:embed)
 static/                 CSS + assets (go:embed)
-docs/prds/              Product requirements documents
+docs/prds/              Product requirements & security documents
 ```
 
 ## Dependencies
