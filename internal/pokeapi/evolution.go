@@ -81,7 +81,7 @@ func walkChain(tx *sql.Tx, link chainLink) error {
 	// Resolve form ID for this species (default form has id == species id in Gen 3)
 	var fromFormID int
 	err := tx.QueryRow(
-		`SELECT id FROM pokemon_form WHERE species_id = ? LIMIT 1`, fromSpeciesID,
+		`SELECT id FROM pokemon WHERE id = ? LIMIT 1`, fromSpeciesID,
 	).Scan(&fromFormID)
 	if err == sql.ErrNoRows {
 		// Form not yet seeded — skip silently
@@ -95,14 +95,17 @@ func walkChain(tx *sql.Tx, link chainLink) error {
 
 		var toFormID int
 		err := tx.QueryRow(
-			`SELECT id FROM pokemon_form WHERE species_id = ? LIMIT 1`, toSpeciesID,
+			`SELECT id FROM pokemon WHERE id = ? LIMIT 1`, toSpeciesID,
 		).Scan(&toFormID)
 		if err == sql.ErrNoRows {
 			// Target not seeded yet — insert a minimal stub so the evolution
 			// condition row can be created. In Gen 3 the default form ID equals
 			// the species ID, so this is safe.
-			tx.Exec(`INSERT OR IGNORE INTO pokemon_species (id, name) VALUES (?, ?)`, toSpeciesID, nextLink.Species.Name)                //nolint:errcheck
-			tx.Exec(`INSERT OR IGNORE INTO pokemon_form (id, species_id, form_name) VALUES (?, ?, 'default')`, toSpeciesID, toSpeciesID) //nolint:errcheck
+			tx.Exec(`
+				INSERT OR IGNORE INTO pokemon
+					(id, species_name, form_name, type1, hp, attack, defense, sp_attack, sp_defense, speed)
+				VALUES (?, ?, 'default', 'normal', 0, 0, 0, 0, 0, 0)
+			`, toSpeciesID, nextLink.Species.Name) //nolint:errcheck
 			toFormID = toSpeciesID
 		} else if err != nil {
 			return err

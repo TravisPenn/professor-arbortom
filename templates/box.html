@@ -25,6 +25,7 @@
         <th>Form</th>
         <th>Level</th>
         <th>Met At</th>
+        <th>Obtained</th>
         <th>Status</th>
         <th>Actions</th>
       </tr>
@@ -34,8 +35,16 @@
       <tr class="{{if not .IsAlive}}row-fainted{{end}}">
         <td>{{.SpeciesName}}</td>
         <td>{{if ne .FormName "default"}}{{.FormName}}{{else}}—{{end}}</td>
-        <td>{{.Level}}</td>
-        <td>{{if .MetLocation}}{{.MetLocation}}{{else}}starter/gift{{end}}</td>
+        <td>{{.Level}}{{if .CaughtLevel}}{{if ne (deref .CaughtLevel) .Level}} <span class="muted">(caught Lv {{deref .CaughtLevel}})</span>{{end}}{{end}}</td>
+        <td>{{if .MetLocation}}{{.MetLocation}}{{else}}—{{end}}</td>
+        <td>
+          {{if eq .AcquisitionType "starter"}}<span class="badge-info">Starter</span>
+          {{else if eq .AcquisitionType "gift"}}<span class="badge-info">Gift</span>
+          {{else if eq .AcquisitionType "trade"}}<span class="badge-info">Trade</span>
+          {{else if eq .AcquisitionType "wild"}}Caught
+          {{else}}Added
+          {{end}}
+        </td>
         <td>
           {{if .IsAlive}}
           <span class="badge-available">Alive</span>
@@ -45,11 +54,11 @@
         </td>
         <td>
           {{if .IsAlive}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" class="form-inline">
             <button type="submit" class="btn btn-sm btn-danger">Mark Fainted</button>
           </form>
           {{if .Evolutions}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" class="form-inline">
             {{if eq (len .Evolutions) 1}}
             <input type="hidden" name="to_form_id" value="{{(index .Evolutions 0).ToFormID}}">
             <button type="submit" class="btn btn-sm">Evolve → {{(index .Evolutions 0).ToSpeciesName}}</button>
@@ -64,7 +73,7 @@
           </form>
           {{end}}
           {{else if not $.NuzlockeOn}}
-          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" style="display:inline">
+          <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" class="form-inline">
             <button type="submit" class="btn btn-sm">Revive</button>
           </form>
           {{end}}

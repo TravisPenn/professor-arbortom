@@ -14,8 +14,7 @@ import (
 // export/import.  Order is FK-safe: parents always precede children.
 var seedsTables = []string{
 	"game_version",
-	"pokemon_species",
-	"pokemon_form",
+	"pokemon",
 	"move",
 	"item",
 	"location",
@@ -85,6 +84,13 @@ func ApplySeedsIfEmpty(db *sql.DB, dbPath string, bundled []byte) error {
 			continue
 		}
 		if _, err := db.Exec(s); err != nil {
+			// Stale bundled seeds may reference tables that were dropped by a
+			// later migration (e.g. pokemon_species / pokemon_form removed in 016).
+			// Skip those gracefully so the rest of the seed data still applies.
+			if strings.Contains(err.Error(), "no such table") {
+				log.Printf("seeds: skipping statement for dropped table (schema evolved): %v", err)
+				continue
+			}
 			return fmt.Errorf("apply seeds stmt %q: %w", truncate(s, 60), err)
 		}
 	}

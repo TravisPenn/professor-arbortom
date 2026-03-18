@@ -48,7 +48,8 @@
           <option value="">— No move —</option>
           {{range .Slot.LegalMoves}}
           <option value="{{.ID}}"
-            {{if and (index $.Slot.MoveIDs 0) (eq .ID (deref (index $.Slot.MoveIDs 0)))}}selected{{end}}>
+            {{if and (index $.Slot.MoveIDs 0) (eq .ID (deref (index $.Slot.MoveIDs 0)))}}selected{{end}}
+            title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}} · PP {{.PP}}{{if .Effect}} · {{.Effect}}{{end}}">
             {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
           </option>
           {{end}}
@@ -61,7 +62,8 @@
           <option value="">— No move —</option>
           {{range .Slot.LegalMoves}}
           <option value="{{.ID}}"
-            {{if and (index $.Slot.MoveIDs 1) (eq .ID (deref (index $.Slot.MoveIDs 1)))}}selected{{end}}>
+            {{if and (index $.Slot.MoveIDs 1) (eq .ID (deref (index $.Slot.MoveIDs 1)))}}selected{{end}}
+            title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}} · PP {{.PP}}{{if .Effect}} · {{.Effect}}{{end}}">
             {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
           </option>
           {{end}}
@@ -74,7 +76,8 @@
           <option value="">— No move —</option>
           {{range .Slot.LegalMoves}}
           <option value="{{.ID}}"
-            {{if and (index $.Slot.MoveIDs 2) (eq .ID (deref (index $.Slot.MoveIDs 2)))}}selected{{end}}>
+            {{if and (index $.Slot.MoveIDs 2) (eq .ID (deref (index $.Slot.MoveIDs 2)))}}selected{{end}}
+            title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}} · PP {{.PP}}{{if .Effect}} · {{.Effect}}{{end}}">
             {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
           </option>
           {{end}}
@@ -87,7 +90,8 @@
           <option value="">— No move —</option>
           {{range .Slot.LegalMoves}}
           <option value="{{.ID}}"
-            {{if and (index $.Slot.MoveIDs 3) (eq .ID (deref (index $.Slot.MoveIDs 3)))}}selected{{end}}>
+            {{if and (index $.Slot.MoveIDs 3) (eq .ID (deref (index $.Slot.MoveIDs 3)))}}selected{{end}}
+            title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}} · PP {{.PP}}{{if .Effect}} · {{.Effect}}{{end}}">
             {{.Name}} ({{.TypeName}}, {{.LearnMethod}})
           </option>
           {{end}}

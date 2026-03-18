@@ -25,7 +25,12 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 			m.name,
 			m.type_name,
 			le.learn_method,
-			le.level_learned
+			le.level_learned,
+			m.power,
+			m.accuracy,
+			m.pp,
+			COALESCE(m.damage_class, '') AS damage_class,
+			COALESCE(m.effect_entry, '')  AS effect_entry
 		FROM learnset_entry le
 		JOIN move m ON m.id = le.move_id
 		WHERE le.form_id = ?
@@ -42,9 +47,20 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 
 	for rows.Next() {
 		var mv Move
-		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned); err != nil {
+		var power, accuracy sql.NullInt64
+		var pp int
+		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned, &power, &accuracy, &pp, &mv.DamageClass, &mv.Effect); err != nil {
 			return nil, nil, err
 		}
+		if power.Valid {
+			v := int(power.Int64)
+			mv.Power = &v
+		}
+		if accuracy.Valid {
+			v := int(accuracy.Int64)
+			mv.Accuracy = &v
+		}
+		mv.PP = pp
 
 		// Annotate level-up moves blocked by cap
 		if cap > 0 && mv.LearnMethod == "level-up" && mv.LevelLearned > cap {
@@ -111,9 +127,12 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 
 	rows, err := db.Query(`
 		SELECT m.id, m.name, m.type_name, le.learn_method, le.level_learned,
+		       m.power, m.accuracy, m.pp,
 		       COALESCE(tm.tm_number, 0)       AS tm_number,
 		       COALESCE(hm.hm_number, 0)       AS hm_number,
-		       COALESCE(tut.location_name, '') AS tutor_location
+		       COALESCE(tut.location_name, '') AS tutor_location,
+		       COALESCE(m.damage_class, '')    AS damage_class,
+		       COALESCE(m.effect_entry, '')    AS effect_entry
 		FROM learnset_entry le
 		JOIN move m ON m.id = le.move_id
 		LEFT JOIN tm_move tm ON (le.learn_method = 'machine' AND m.name = tm.move_name)
@@ -136,10 +155,23 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 	var moves []Move
 	for rows.Next() {
 		var mv Move
+		var power, accuracy sql.NullInt64
+		var pp int
 		if err := rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned,
-			&mv.TMNumber, &mv.HMNumber, &mv.TutorLocation); err != nil {
+			&power, &accuracy, &pp,
+			&mv.TMNumber, &mv.HMNumber, &mv.TutorLocation,
+			&mv.DamageClass, &mv.Effect); err != nil {
 			return nil, err
 		}
+		if power.Valid {
+			v := int(power.Int64)
+			mv.Power = &v
+		}
+		if accuracy.Valid {
+			v := int(accuracy.Int64)
+			mv.Accuracy = &v
+		}
+		mv.PP = pp
 		// Skip level-up moves the Pokémon has already had the chance to learn.
 		if mv.LearnMethod == "level-up" && currentLevel > 0 && mv.LevelLearned <= currentLevel {
 			continue
@@ -161,6 +193,9 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 	// Annotate evo learnset differences (non-fatal: skip on any error).
 	_ = annotateEvoNotes(db, moves, formID, rs.VersionGroupID)
 
+	// Append moves exclusive to evolutions (non-fatal: skip on any error).
+	moves, _ = appendEvoExclusiveMoves(db, moves, formID, rs.VersionGroupID)
+
 	return moves, nil
 }
 
@@ -172,10 +207,9 @@ func annotateEvoNotes(db *sql.DB, moves []Move, formID, versionGroupID int) erro
 	}
 
 	evoRows, err := db.Query(`
-		SELECT ec.to_form_id, ps.name
+		SELECT ec.to_form_id, p.species_name
 		FROM evolution_condition ec
-		JOIN pokemon_form pf ON pf.id = ec.to_form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = ec.to_form_id
 		WHERE ec.from_form_id = ?
 		GROUP BY ec.to_form_id
 	`, formID)
@@ -227,7 +261,7 @@ func annotateEvoNotes(db *sql.DB, moves []Move, formID, versionGroupID int) erro
 		evoLearnsets[evo.formID] = ls
 	}
 
-	// Annotate each level-up move with evo differences.
+	// Annotate each level-up move with all evo levels.
 	for i := range moves {
 		if moves[i].LearnMethod != "level-up" {
 			continue
@@ -240,11 +274,7 @@ func annotateEvoNotes(db *sql.DB, moves []Move, formID, versionGroupID int) erro
 				continue // evolution doesn't learn this move at all via level-up
 			}
 			label := capitalizeFirst(evo.name)
-			if evoLvl < moves[i].LevelLearned {
-				notes = append(notes, fmt.Sprintf("%s Lv%d \u2191", label, evoLvl))
-			} else if evoLvl > moves[i].LevelLearned {
-				notes = append(notes, fmt.Sprintf("%s Lv%d \u2193", label, evoLvl))
-			}
+			notes = append(notes, fmt.Sprintf("%s Lv%d", label, evoLvl))
 		}
 		if len(notes) > 0 {
 			moves[i].EvoNote = strings.Join(notes, " · ")
@@ -259,4 +289,126 @@ func capitalizeFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// appendEvoExclusiveMoves appends moves that are only learnable by one or more
+// evolutions of formID (not by formID itself). These are tagged with
+// LearnMethod "evo-exclusive" and EvoNote naming the evolution and level.
+func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID int) ([]Move, error) {
+	// Collect all evolution form IDs (recursive up to depth 2).
+	type evoInfo struct {
+		formID int
+		name   string
+	}
+	var allEvos []evoInfo
+	frontier := []int{formID}
+	for depth := 0; depth < 2 && len(frontier) > 0; depth++ {
+		var nextFrontier []int
+		for _, fid := range frontier {
+			rows, err := db.Query(`
+				SELECT ec.to_form_id, p.species_name
+				FROM evolution_condition ec
+				JOIN pokemon p ON p.id = ec.to_form_id
+				WHERE ec.from_form_id = ?
+				GROUP BY ec.to_form_id
+			`, fid)
+			if err != nil {
+				continue
+			}
+			for rows.Next() {
+				var e evoInfo
+				if rows.Scan(&e.formID, &e.name) == nil {
+					allEvos = append(allEvos, e)
+					nextFrontier = append(nextFrontier, e.formID)
+				}
+			}
+			rows.Close()
+		}
+		frontier = nextFrontier
+	}
+	if len(allEvos) == 0 {
+		return moves, nil
+	}
+
+	// Build set of move names already present in the current moves list.
+	currentMoveNames := make(map[string]bool, len(moves))
+	for _, mv := range moves {
+		currentMoveNames[mv.Name] = true
+	}
+
+	// Also build the base form's full learnset for exclusion.
+	baseLearnset := make(map[string]bool)
+	baseRows, err := db.Query(`
+		SELECT m.name FROM learnset_entry le
+		JOIN move m ON m.id = le.move_id
+		WHERE le.form_id = ? AND le.version_group_id = ?
+	`, formID, versionGroupID)
+	if err == nil {
+		for baseRows.Next() {
+			var name string
+			if baseRows.Scan(&name) == nil {
+				baseLearnset[name] = true
+			}
+		}
+		baseRows.Close()
+	}
+
+	// For each evo, find moves exclusive to evolutions.
+	seen := make(map[string]bool)
+	for _, evo := range allEvos {
+		rows, err := db.Query(`
+			SELECT m.id,
+			       m.name,
+			       m.type_name,
+			       m.power,
+			       m.accuracy,
+			       m.pp,
+			       m.damage_class,
+			       m.effect_entry,
+			       le.learn_method,
+			       le.level_learned
+			FROM learnset_entry le
+			JOIN move m ON m.id = le.move_id
+			WHERE le.form_id = ? AND le.version_group_id = ?
+			  AND le.learn_method != 'egg'
+			ORDER BY le.learn_method, le.level_learned, m.name
+		`, evo.formID, versionGroupID)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var mv Move
+			if rows.Scan(
+				&mv.MoveID,
+				&mv.Name,
+				&mv.TypeName,
+				&mv.Power,
+				&mv.Accuracy,
+				&mv.PP,
+				&mv.DamageClass,
+				&mv.EffectEntry,
+				&mv.LearnMethod,
+				&mv.LevelLearned,
+			) != nil {
+				continue
+			}
+			// Skip if base form can learn it or we already added it.
+			if baseLearnset[mv.Name] || currentMoveNames[mv.Name] || seen[mv.Name] {
+				continue
+			}
+			seen[mv.Name] = true
+
+			label := capitalizeFirst(evo.name)
+			if mv.LearnMethod == "level-up" {
+				mv.EvoNote = fmt.Sprintf("%s Lv%d", label, mv.LevelLearned)
+			} else {
+				mv.EvoNote = fmt.Sprintf("%s (%s)", label, mv.LearnMethod)
+			}
+			mv.LearnMethod = "evo-exclusive"
+			moves = append(moves, mv)
+		}
+		rows.Close()
+	}
+
+	return moves, nil
 }

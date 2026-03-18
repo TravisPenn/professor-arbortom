@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 )
 
@@ -35,24 +35,21 @@ func hMustExec(t *testing.T, db *sql.DB, q string, args ...interface{}) {
 
 // bootstrapProgressDB creates the minimal schema for UpdateProgress tests.
 //
-//   - game_version, user, run, run_progress, run_flag, api_cache_log
-//   - inserts version 10 (firered) and run id=1 with no progress row yet
+//   - game_version, user, run (with badge_count/current_location_id), run_setting, location, api_cache_log
+//   - inserts version 10 (firered) and run id=1 with no progress yet
 func bootstrapProgressDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db := newHandlerDB(t)
 	hMustExec(t, db, `CREATE TABLE game_version (id INTEGER PRIMARY KEY, name TEXT, version_group_id INTEGER, generation_id INTEGER)`)
 	hMustExec(t, db, `CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT UNIQUE)`)
-	hMustExec(t, db, `CREATE TABLE run (id INTEGER PRIMARY KEY, user_id INTEGER, version_id INTEGER, name TEXT, archived_at TEXT)`)
-	hMustExec(t, db, `CREATE TABLE run_progress (run_id INTEGER PRIMARY KEY, badge_count INTEGER DEFAULT 0, current_location_id INTEGER, updated_at TEXT)`)
-	hMustExec(t, db, `CREATE TABLE run_flag (run_id INTEGER, key TEXT, value TEXT, PRIMARY KEY (run_id, key))`)
+	hMustExec(t, db, `CREATE TABLE run (id INTEGER PRIMARY KEY, user_id INTEGER, version_id INTEGER, name TEXT, archived_at TEXT, badge_count INTEGER, current_location_id INTEGER, progress_updated_at TEXT)`)
+	hMustExec(t, db, `CREATE TABLE run_setting (run_id INTEGER, type TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '', PRIMARY KEY (run_id, type, key))`)
 	hMustExec(t, db, `CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT, version_id INTEGER, region TEXT)`)
 	hMustExec(t, db, `CREATE TABLE api_cache_log (id INTEGER PRIMARY KEY, resource TEXT, resource_id INTEGER)`)
-	hMustExec(t, db, `CREATE TABLE rule_def (id INTEGER PRIMARY KEY, key TEXT)`)
-	hMustExec(t, db, `CREATE TABLE run_rule (id INTEGER PRIMARY KEY, run_id INTEGER, rule_def_id INTEGER, enabled INTEGER DEFAULT 0, params_json TEXT DEFAULT '{}')`)
 
 	hMustExec(t, db, `INSERT INTO game_version VALUES (10, 'firered', 7, 3)`)
 	hMustExec(t, db, `INSERT INTO user VALUES (1, 'tester')`)
-	hMustExec(t, db, `INSERT INTO run VALUES (1, 1, 10, 'test run', NULL)`)
+	hMustExec(t, db, `INSERT INTO run VALUES (1, 1, 10, 'test run', NULL, NULL, NULL, NULL)`)
 
 	// Add a static town (negative ID) so that loadLocations returns results
 	// even before PokeAPI seeding — this is what migration 005 provides.
@@ -104,7 +101,7 @@ func newProgressRouter(db *sql.DB, run models.Run) *gin.Engine {
 func savedLocationID(t *testing.T, db *sql.DB, runID int) *int {
 	t.Helper()
 	var id *int
-	db.QueryRow(`SELECT current_location_id FROM run_progress WHERE run_id = ?`, runID).Scan(&id) //nolint:errcheck
+	db.QueryRow(`SELECT current_location_id FROM run WHERE id = ?`, runID).Scan(&id) //nolint:errcheck
 	return id
 }
 
@@ -179,19 +176,27 @@ func TestUpdateProgress_ZeroLocationIgnored(t *testing.T) {
 // ─── LogEncounter tests ───────────────────────────────────────────────────────
 
 // bootstrapRoutesDB extends bootstrapProgressDB with the tables needed by
-// LogEncounter: pokemon_species, pokemon_form, run_pokemon.
+// LogEncounter: pokemon, run_pokemon.
 func bootstrapRoutesDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db := bootstrapProgressDB(t)
-	hMustExec(t, db, `CREATE TABLE pokemon_species (id INTEGER PRIMARY KEY, name TEXT)`)
-	hMustExec(t, db, `CREATE TABLE pokemon_form (id INTEGER PRIMARY KEY, species_id INTEGER, form_name TEXT)`)
+	hMustExec(t, db, `CREATE TABLE pokemon (
+		id INTEGER PRIMARY KEY, species_name TEXT NOT NULL, form_name TEXT NOT NULL DEFAULT 'default',
+		type1 TEXT, type2 TEXT,
+		hp INTEGER, attack INTEGER, defense INTEGER,
+		sp_attack INTEGER, sp_defense INTEGER, speed INTEGER,
+		ability1 TEXT, ability2 TEXT)`)
 	hMustExec(t, db, `CREATE TABLE run_pokemon (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		run_id INTEGER, form_id INTEGER, level INTEGER,
-		met_location_id INTEGER, is_alive INTEGER DEFAULT 1
+		caught_level INTEGER,
+		acquisition_type TEXT NOT NULL DEFAULT 'manual'
+			CHECK(acquisition_type IN ('starter','wild','gift','trade','manual')),
+		met_location_id INTEGER, is_alive INTEGER DEFAULT 1,
+		in_party INTEGER DEFAULT 0, party_slot INTEGER,
+		moves_json TEXT DEFAULT '[]', held_item_id INTEGER
 	)`)
-	hMustExec(t, db, `INSERT INTO pokemon_species VALUES (19, 'rattata')`)
-	hMustExec(t, db, `INSERT INTO pokemon_form VALUES (19, 19, 'default')`)
+	hMustExec(t, db, `INSERT INTO pokemon (id, species_name) VALUES (19, 'rattata')`)
 	return db
 }
 
@@ -200,7 +205,7 @@ func newRoutesRouter(db *sql.DB, run models.Run) *gin.Engine {
 	r := gin.New()
 	r.POST("/runs/:run_id/routes",
 		injectRunContext(run, models.RunProgress{RunID: run.ID}),
-		LogEncounter(db),
+		LogEncounter(db, nil),
 	)
 	return r
 }

@@ -59,6 +59,15 @@ type moveResponse struct {
 	Type     struct {
 		Name string `json:"name"`
 	} `json:"type"`
+	DamageClass struct {
+		Name string `json:"name"`
+	} `json:"damage_class"`
+	EffectEntries []struct {
+		ShortEffect string `json:"short_effect"`
+		Language    struct {
+			Name string `json:"name"`
+		} `json:"language"`
+	} `json:"effect_entries"`
 }
 
 // EnsurePokemon fetches and caches species, form, and learnset data for the given
@@ -142,59 +151,51 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Upsert species
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_species (id, name) VALUES (?, ?)`,
-		speciesID, poke.Species.Name,
-	); err != nil {
-		return fmt.Errorf("pokeapi: insert species %s: %w", poke.Species.Name, err)
-	}
-
-	// Upsert form
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_form (id, species_id, form_name) VALUES (?, ?, ?)`,
-		poke.ID, speciesID, "default",
-	); err != nil {
-		return fmt.Errorf("pokeapi: insert form %d: %w", poke.ID, err)
-	}
-
-	// Upsert types (COACH-004)
+	// Collect types
+	var type1, type2 string
 	for _, t := range poke.Types {
-		if _, err := tx.Exec(
-			`INSERT OR IGNORE INTO pokemon_type (form_id, slot, type_name) VALUES (?, ?, ?)`,
-			poke.ID, t.Slot, t.Type.Name,
-		); err != nil {
-			logWarn("insert type %s for form %d: %v", t.Type.Name, poke.ID, err)
+		if t.Slot == 1 {
+			type1 = t.Type.Name
+		} else if t.Slot == 2 {
+			type2 = t.Type.Name
 		}
 	}
+	if type1 == "" {
+		type1 = "normal"
+	}
 
-	// Upsert base stats (COACH-004)
+	// Collect base stats
 	statMap := make(map[string]int, 6)
 	for _, s := range poke.Stats {
 		statMap[s.Stat.Name] = s.BaseStat
 	}
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO pokemon_stats (form_id, hp, attack, defense, sp_attack, sp_defense, speed)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		poke.ID,
-		statMap["hp"], statMap["attack"], statMap["defense"],
-		statMap["special-attack"], statMap["special-defense"], statMap["speed"],
-	); err != nil {
-		logWarn("insert stats for form %d: %v", poke.ID, err)
+
+	// Collect abilities (non-hidden only)
+	var ability1, ability2 string
+	for _, a := range poke.Abilities {
+		if a.IsHidden {
+			continue
+		}
+		if a.Slot == 1 {
+			ability1 = a.Ability.Name
+		} else if a.Slot == 2 {
+			ability2 = a.Ability.Name
+		}
 	}
 
-	// Upsert abilities (COACH-004)
-	for _, a := range poke.Abilities {
-		slot := a.Slot
-		if a.IsHidden {
-			slot = 3
-		}
-		if _, err := tx.Exec(
-			`INSERT OR IGNORE INTO pokemon_ability (form_id, slot, ability_name) VALUES (?, ?, ?)`,
-			poke.ID, slot, a.Ability.Name,
-		); err != nil {
-			logWarn("insert ability %s for form %d: %v", a.Ability.Name, poke.ID, err)
-		}
+	// Upsert into consolidated pokemon table (SC-001)
+	if _, err := tx.Exec(`
+		INSERT OR REPLACE INTO pokemon
+			(id, species_name, form_name, type1, type2,
+			 hp, attack, defense, sp_attack, sp_defense, speed, ability1, ability2)
+		VALUES (?, ?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		poke.ID, poke.Species.Name, type1, type2,
+		statMap["hp"], statMap["attack"], statMap["defense"],
+		statMap["special-attack"], statMap["special-defense"], statMap["speed"],
+		ability1, ability2,
+	); err != nil {
+		return fmt.Errorf("pokeapi: insert pokemon %d: %w", poke.ID, err)
 	}
 
 	// Upsert moves and learnset entries
@@ -213,9 +214,16 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 			if mv.Accuracy != nil {
 				accuracy = *mv.Accuracy
 			}
+			effectEntry := ""
+			for _, e := range mv.EffectEntries {
+				if e.Language.Name == "en" {
+					effectEntry = e.ShortEffect
+					break
+				}
+			}
 			if _, insertErr := tx.Exec(
-				`INSERT OR IGNORE INTO move (id, name, type_name, power, accuracy, pp) VALUES (?,?,?,?,?,?)`,
-				mv.ID, mv.Name, mv.Type.Name, power, accuracy, mv.PP,
+				`INSERT OR IGNORE INTO move (id, name, type_name, power, accuracy, pp, damage_class, effect_entry) VALUES (?,?,?,?,?,?,?,?)`,
+				mv.ID, mv.Name, mv.Type.Name, power, accuracy, mv.PP, mv.DamageClass.Name, effectEntry,
 			); insertErr != nil {
 				logWarn("insert move %s: %v", entry.moveName, insertErr)
 				continue
@@ -249,6 +257,27 @@ func (c *Client) EnsurePokemon(db *sql.DB, formID, versionGroupID int) error {
 	if chainErr == nil && chainID > 0 {
 		if err := c.EnsureEvolutionChain(db, chainID); err != nil {
 			logWarn("EnsureEvolutionChain %d: %v", chainID, err)
+		}
+	}
+
+	// ── Phase 4: seed direct evolution targets' full data (background) ───────
+	// evolution_condition is now populated; fire background seeding for each
+	// direct evolution so learnset data is available for evo-note annotations.
+	evoRows, evoErr := db.Query(
+		`SELECT DISTINCT to_form_id FROM evolution_condition WHERE from_form_id = ?`,
+		formID,
+	)
+	if evoErr == nil {
+		var evoFormIDs []int
+		for evoRows.Next() {
+			var eid int
+			if evoRows.Scan(&eid) == nil {
+				evoFormIDs = append(evoFormIDs, eid)
+			}
+		}
+		evoRows.Close()
+		for _, eid := range evoFormIDs {
+			c.GoEnsurePokemon(db, eid, versionGroupID)
 		}
 	}
 

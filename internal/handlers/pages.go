@@ -38,12 +38,13 @@ type RunsPage struct {
 	ArchivedRuns      []RunSummary
 	Versions          []VersionOption
 	StartersByVersion map[int][]StarterOption
+	SelectedVersionID int // re-populates version select after a validation error
 }
 
 // StarterOption represents a choosable starter Pokémon for a game version.
 type StarterOption struct {
-	FormID      int
-	SpeciesName string // capitalized, e.g. "Bulbasaur"
+	FormID      int    `json:"id"`
+	SpeciesName string `json:"name"` // capitalized, e.g. "Bulbasaur"
 }
 
 type RunSummary struct {
@@ -98,6 +99,17 @@ type TeamPage struct {
 	LegalityErrors map[string]string
 }
 
+// MoveChip carries the data needed to render a move pill with a hover tooltip
+// on the team overview page.
+type MoveChip struct {
+	Name        string
+	DamageClass string // "physical", "special", "status", or ""
+	Power       *int
+	Accuracy    *int
+	PP          int
+	Effect      string
+}
+
 type PartySlot struct {
 	Slot         int
 	FormID       *int
@@ -106,6 +118,7 @@ type PartySlot struct {
 	Level        *int
 	MoveIDs      [4]*int
 	MoveNames    [4]string
+	Moves        [4]MoveChip // populated for overview tooltips
 	HeldItemID   *int
 	HeldItemName string
 	LegalMoves   []MoveOption
@@ -129,6 +142,11 @@ type MoveOption struct {
 	TMNumber      int
 	HMNumber      int
 	TutorLocation string
+	Power         *int // nil for status moves
+	Accuracy      *int // nil for never-miss moves
+	PP            int
+	DamageClass   string // "physical", "special", "status", or "" if not seeded
+	Effect        string // short description, or "" if not seeded
 }
 
 type ItemOption struct {
@@ -160,24 +178,35 @@ type BoxPage struct {
 }
 
 type BoxEntry struct {
-	ID          int
-	FormID      int
-	SpeciesName string
-	FormName    string
-	Level       int
-	MetLocation string
-	IsAlive     bool
-	Evolutions  []legality.Evolution
+	ID              int
+	FormID          int
+	SpeciesName     string
+	FormName        string
+	Level           int
+	CaughtLevel     *int
+	MetLocation     string
+	AcquisitionType string
+	IsAlive         bool
+	Evolutions      []legality.Evolution
 }
 
 // ─── Routes Log ───────────────────────────────────────────────────────────────
 
+// EncounterOption holds a catchable species and its level range at a location.
+type EncounterOption struct {
+	Name     string `json:"name"`
+	MinLevel int    `json:"min_level"`
+	MaxLevel int    `json:"max_level"`
+}
+
 type RoutesPage struct {
 	BasePage
-	Log              []RouteEntry
-	Locations        []LocationOption
-	NuzlockeOn       bool
-	DuplicateWarning *DuplicateWarning
+	Log                  []RouteEntry
+	Locations            []LocationOption
+	EncountersByLocation map[int][]EncounterOption // keyed by location ID
+	NuzlockeOn           bool
+	DuplicateWarning     *DuplicateWarning
+	ValidationError      string
 	// Pre-filled form values on re-render
 	FormLocationID int
 	FormSpecies    string
@@ -230,7 +259,7 @@ type OverviewPage struct {
 	// Rules
 	ActiveRules []string
 	// Coach
-	ZeroClawAvailable bool
+	CoachAvailable bool
 }
 
 type OverviewSlot struct {
@@ -243,17 +272,18 @@ type OverviewSlot struct {
 
 type CoachPage struct {
 	BasePage
-	ZeroClawAvailable bool
-	Acquisitions      []legality.Acquisition
-	Trades            []TradeOption
-	PartyMoves        []PartyMoveSummary
-	LegalItems        []ItemOption
-	CoachAnswer       *CoachAnswer
-	PlayerQuestion    string
-	TeamInsights      *TeamInsights
+	CoachAvailable bool
+	Acquisitions   []legality.Acquisition
+	Trades         []TradeOption
+	PartyMoves     []PartyMoveSummary
+	LegalItems     []ItemOption
+	CoachAnswer    *CoachAnswer
+	PlayerQuestion string
+	TeamInsights   *TeamInsights
+	NextOpponents  []OpponentSummary // COACH-015
 }
 
-// TeamInsights holds pre-computed analysis rendered in the coach panel regardless of ZeroClaw.
+// TeamInsights holds pre-computed analysis rendered in the coach panel regardless of AI coach availability.
 type TeamInsights struct {
 	Members        []PartyDetailPayload
 	Weaknesses     []legality.TypeThreat
@@ -291,7 +321,7 @@ type PartyMoveSummary struct {
 }
 
 // CoachAnswer holds the LLM-generated coach response.
-// SECURITY BOUNDARY (SEC-018): Text comes from the ZeroClaw LLM gateway and
+// SECURITY BOUNDARY (SEC-018): Text comes from the AI Coach LLM host and
 // must NEVER be rendered with template.HTML, safeHTML, or any unescaping
 // function. Go's html/template auto-escapes it safely. If rich rendering
 // (Markdown) is ever needed, use a sanitizing renderer (e.g. bluemonday).
@@ -330,4 +360,24 @@ type TeamAnalysisPayload struct {
 	Resistances    []string    `json:"resistances"`
 	Immunities     []string    `json:"immunities"`
 	UncoveredTypes []string    `json:"uncovered_types"`
+}
+
+// ─── Coach opponent types (COACH-015) ────────────────────────────────────────
+
+// OpponentSummary is one gym leader or Elite Four member.
+type OpponentSummary struct {
+	Name          string            `json:"name"`
+	TypeSpecialty string            `json:"type_specialty"`
+	LocationName  string            `json:"location_name"`
+	BadgeOrder    int               `json:"badge_order"`
+	Team          []OpponentPokemon `json:"team"`
+}
+
+// OpponentPokemon is one party member in an opponent's team.
+type OpponentPokemon struct {
+	SpeciesName string   `json:"species_name"`
+	Level       int      `json:"level"`
+	Types       []string `json:"types,omitempty"`
+	HeldItem    string   `json:"held_item,omitempty"`
+	Moves       []string `json:"moves,omitempty"`
 }

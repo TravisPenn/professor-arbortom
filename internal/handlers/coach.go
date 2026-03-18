@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowCoach renders GET /runs/:run_id/coach
-func ShowCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
-		page, err := buildCoachPage(c, db, run.ID, zc.IsAvailable())
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, zc.IsAvailable())
 		if err != nil {
 			respondError(c, err)
 			return
@@ -25,7 +26,7 @@ func ShowCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 }
 
 // QueryCoach handles POST /runs/:run_id/coach
-func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
+func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		question := c.PostForm("question")
@@ -37,7 +38,7 @@ func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 		}
 
 		available := zc.IsAvailable()
-		page, err := buildCoachPage(c, db, run.ID, available)
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, available)
 		if err != nil {
 			respondError(c, err)
 			return
@@ -64,7 +65,7 @@ func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 				Truncated: response.Truncated,
 			}
 		} else {
-			page.ZeroClawAvailable = false
+			page.CoachAvailable = false
 		}
 
 		c.HTML(http.StatusOK, "coach.html", page)
@@ -73,10 +74,34 @@ func QueryCoach(db *sql.DB, zc *services.ZeroClaw) gin.HandlerFunc {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (CoachPage, error) {
+func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runID int, available bool) (CoachPage, error) {
 	acqs, _, err := legality.LegalAcquisitions(db, runID)
 	if err != nil {
 		return CoachPage{}, err
+	}
+
+	// CD-001: Deduplicate acquisitions by (species, form, location), merging level ranges.
+	type acqKey struct{ species, form, location string }
+	grouped := map[acqKey]*legality.Acquisition{}
+	var groupOrder []acqKey
+	for _, a := range acqs {
+		k := acqKey{a.SpeciesName, a.FormName, a.LocationName}
+		if g, ok := grouped[k]; ok {
+			if a.MinLevel < g.MinLevel {
+				g.MinLevel = a.MinLevel
+			}
+			if a.MaxLevel > g.MaxLevel {
+				g.MaxLevel = a.MaxLevel
+			}
+		} else {
+			copy := a
+			grouped[k] = &copy
+			groupOrder = append(groupOrder, k)
+		}
+	}
+	acqs = nil
+	for _, k := range groupOrder {
+		acqs = append(acqs, *grouped[k])
 	}
 
 	trades, err := legality.LegalTrades(db, runID)
@@ -126,11 +151,30 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 		}
 
 		var speciesName string
-		db.QueryRow(`
-			SELECT ps.name FROM pokemon_form pf
-			JOIN pokemon_species ps ON ps.id = pf.species_id
-			WHERE pf.id = ?
-		`, formID).Scan(&speciesName) //nolint:errcheck
+		db.QueryRow(`SELECT species_name FROM pokemon WHERE id = ?`, formID).Scan(&speciesName) //nolint:errcheck
+
+		// Trigger background seeding for direct evolution targets that lack
+		// learnset data — ensures evo-note and evo-exclusive columns are populated.
+		if pokeClient != nil {
+			var vgID int
+			db.QueryRow(`SELECT gv.version_group_id FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&vgID) //nolint:errcheck
+			if vgID > 0 {
+				evoTargets, _ := db.Query(`SELECT DISTINCT to_form_id FROM evolution_condition WHERE from_form_id = ?`, formID)
+				if evoTargets != nil {
+					for evoTargets.Next() {
+						var eid int
+						if evoTargets.Scan(&eid) == nil {
+							var cnt int
+							db.QueryRow(`SELECT COUNT(*) FROM learnset_entry WHERE form_id = ?`, eid).Scan(&cnt) //nolint:errcheck
+							if cnt == 0 {
+								pokeClient.GoEnsurePokemon(db, eid, vgID)
+							}
+						}
+					}
+					evoTargets.Close()
+				}
+			}
+		}
 
 		mvs, _ := legality.CoachMoves(db, runID, formID, level)
 		var moveOpts []MoveOption
@@ -147,6 +191,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 	}
 
 	insights, _ := buildTeamInsights(db, runID)
+	opponents, _ := nextOpponents(db, runID)
 
 	return CoachPage{
 		BasePage: BasePage{
@@ -154,12 +199,13 @@ func buildCoachPage(c *gin.Context, db *sql.DB, runID int, available bool) (Coac
 			ActiveNav:  "coach",
 			RunContext: buildRunContext(c),
 		},
-		ZeroClawAvailable: available,
-		Acquisitions:      acqs,
-		Trades:            tradeOptions,
-		PartyMoves:        party,
-		LegalItems:        itemOptions,
-		TeamInsights:      insights,
+		CoachAvailable: available,
+		Acquisitions:   acqs,
+		Trades:         tradeOptions,
+		PartyMoves:     party,
+		LegalItems:     itemOptions,
+		TeamInsights:   insights,
+		NextOpponents:  opponents,
 	}, nil
 }
 
@@ -175,10 +221,9 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 	}
 
 	rows, err := db.Query(`
-		SELECT rp.id, rp.party_slot, rp.form_id, rp.level, ps.name
+		SELECT rp.id, rp.party_slot, rp.form_id, rp.level, p.species_name
 		FROM run_pokemon rp
-		JOIN pokemon_form pf ON pf.id = rp.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = rp.form_id
 		WHERE rp.run_id = ? AND rp.in_party = 1
 		ORDER BY rp.party_slot
 	`, runID)
@@ -210,30 +255,29 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 			Level:        pr.level,
 		}
 
-		// Types (COACH-004)
-		typeRows, _ := db.Query(`SELECT type_name FROM pokemon_type WHERE form_id = ? ORDER BY slot`, pr.formID)
+		// Types from pokemon.type1/type2 (SC-001)
+		var pType1, pType2 sql.NullString
+		db.QueryRow(`SELECT type1, type2 FROM pokemon WHERE id = ?`, pr.formID).Scan(&pType1, &pType2) //nolint:errcheck
 		var types []string
-		if typeRows != nil {
-			for typeRows.Next() {
-				var tn string
-				typeRows.Scan(&tn) //nolint:errcheck
-				types = append(types, tn)
-			}
-			typeRows.Close()
+		if pType1.Valid && pType1.String != "" {
+			types = append(types, pType1.String)
+		}
+		if pType2.Valid && pType2.String != "" {
+			types = append(types, pType2.String)
 		}
 		detail.Types = types
 
-		// Base stats (COACH-004)
+		// Base stats from pokemon table (SC-001)
 		var stats legality.BaseStats
-		if err := db.QueryRow(`SELECT hp, attack, defense, sp_attack, sp_defense, speed FROM pokemon_stats WHERE form_id = ?`, pr.formID).
+		if err := db.QueryRow(`SELECT hp, attack, defense, sp_attack, sp_defense, speed FROM pokemon WHERE id = ?`, pr.formID).
 			Scan(&stats.HP, &stats.Attack, &stats.Defense, &stats.SpAttack, &stats.SpDefense, &stats.Speed); err == nil {
 			detail.BaseStats = &stats
 		}
 
-		// Primary ability slot 1 (COACH-004)
-		var abilityName string
-		db.QueryRow(`SELECT ability_name FROM pokemon_ability WHERE form_id = ? AND slot = 1`, pr.formID).Scan(&abilityName) //nolint:errcheck
-		detail.Ability = abilityName
+		// Primary ability from pokemon.ability1 (SC-001)
+		var abilityName sql.NullString
+		db.QueryRow(`SELECT ability1 FROM pokemon WHERE id = ?`, pr.formID).Scan(&abilityName) //nolint:errcheck
+		detail.Ability = abilityName.String
 
 		// Current moves from run_pokemon_move (COACH-005)
 		moveRows, _ := db.Query(`
@@ -327,7 +371,7 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 	}, nil
 }
 
-// buildCoachPayload assembles the enriched CoachPayload for ZeroClaw (COACH-006).
+// buildCoachPayload assembles the enriched CoachPayload for AI Coach (COACH-006).
 // It reuses the TeamInsights already computed for the page to avoid extra DB queries.
 func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (services.CoachPayload, error) {
 	var versionName string
@@ -364,8 +408,101 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 			TeamAnalysis:   teamAnalysis,
 			EvolutionPaths: evolutionPaths,
 			PartyDetails:   partyDetails,
+			NextOpponents:  page.NextOpponents,
 		},
 		Question:    question,
 		ContextNote: contextNote,
 	}, nil
+}
+
+// nextOpponents returns up to 2 upcoming gym leaders / E4 members for the run's
+// current version, ordered by badge_order.
+// Returns nil, nil when the gym_leader table does not yet exist or no leaders remain.
+func nextOpponents(db *sql.DB, runID int) ([]OpponentSummary, error) {
+	if !tableExists(db, "gym_leader") {
+		return nil, nil
+	}
+
+	var versionID, badgeCount int
+	err := db.QueryRow(
+		`SELECT version_id, COALESCE(badge_count, 0) FROM run WHERE id = ?`,
+		runID,
+	).Scan(&versionID, &badgeCount)
+	if err != nil {
+		return nil, nil
+	}
+
+	leaders, err := db.Query(`
+		SELECT id, name, type_specialty, location_name, badge_order
+		FROM gym_leader
+		WHERE version_id = ? AND badge_order > ?
+		ORDER BY badge_order
+		LIMIT 2`,
+		versionID, badgeCount,
+	)
+	if err != nil {
+		return nil, nil
+	}
+	defer leaders.Close()
+
+	var summaries []OpponentSummary
+	for leaders.Next() {
+		var leaderID, badgeOrder int
+		var name, typeSpecialty, locationName string
+		if err := leaders.Scan(&leaderID, &name, &typeSpecialty, &locationName, &badgeOrder); err != nil {
+			continue
+		}
+
+		teamRows, err := db.Query(`
+			SELECT p.species_name, glp.level, COALESCE(glp.held_item,''),
+			       COALESCE(glp.move_1,''), COALESCE(glp.move_2,''),
+			       COALESCE(glp.move_3,''), COALESCE(glp.move_4,''),
+			       COALESCE(p.type1,''), COALESCE(p.type2,'')
+			FROM gym_leader_pokemon glp
+			JOIN pokemon p ON p.id = glp.form_id
+			WHERE glp.gym_leader_id = ? AND glp.starter_variant IS NULL
+			ORDER BY glp.slot`,
+			leaderID,
+		)
+		if err != nil {
+			continue
+		}
+
+		var team []OpponentPokemon
+		for teamRows.Next() {
+			var species, heldItem, m1, m2, m3, m4, t1, t2 string
+			var level int
+			if err := teamRows.Scan(&species, &level, &heldItem, &m1, &m2, &m3, &m4, &t1, &t2); err != nil {
+				continue
+			}
+			op := OpponentPokemon{
+				SpeciesName: species,
+				Level:       level,
+				HeldItem:    heldItem,
+			}
+			if t1 != "" {
+				op.Types = append(op.Types, t1)
+			}
+			if t2 != "" {
+				op.Types = append(op.Types, t2)
+			}
+			for _, mv := range []string{m1, m2, m3, m4} {
+				if mv != "" {
+					op.Moves = append(op.Moves, mv)
+				}
+			}
+			team = append(team, op)
+		}
+		teamRows.Close()
+
+		summaries = append(summaries, OpponentSummary{
+			Name:          name,
+			TypeSpecialty: typeSpecialty,
+			LocationName:  locationName,
+			BadgeOrder:    badgeOrder,
+			Team:          team,
+		})
+	}
+
+	return summaries, nil
 }

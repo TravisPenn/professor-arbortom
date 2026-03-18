@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
+	"github.com/gin-gonic/gin"
 )
 
 // ShowTeam renders GET /runs/:run_id/team — compact overview, no heavy selects.
@@ -172,8 +172,8 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 		var pkmnID int
 		db.QueryRow(`SELECT id FROM run_pokemon WHERE run_id = ? AND form_id = ? AND is_alive = 1 ORDER BY id LIMIT 1`, run.ID, formID).Scan(&pkmnID) //nolint:errcheck
 		if pkmnID == 0 {
-			res, err2 := db.Exec(`INSERT INTO run_pokemon (run_id, form_id, level, is_alive, in_party, party_slot, moves_json, held_item_id) VALUES (?, ?, ?, 1, 1, ?, ?, ?)`,
-				run.ID, formID, level, slot, string(movesJSON), heldPtr)
+			res, err2 := db.Exec(`INSERT INTO run_pokemon (run_id, form_id, level, caught_level, acquisition_type, is_alive, in_party, party_slot, moves_json, held_item_id) VALUES (?, ?, ?, ?, 'manual', 1, 1, ?, ?, ?)`,
+				run.ID, formID, level, level, slot, string(movesJSON), heldPtr)
 			if err2 != nil {
 				respondError(c, err2)
 				return
@@ -212,11 +212,11 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
 		query := `
-			SELECT rp.id, rp.form_id, ps.name, pf.form_name, rp.level,
+			SELECT rp.id, rp.form_id, p.species_name, p.form_name, rp.level,
+				rp.caught_level, rp.acquisition_type,
 				COALESCE(l.name, '') AS met_location, rp.is_alive
 			FROM run_pokemon rp
-			JOIN pokemon_form pf ON pf.id = rp.form_id
-			JOIN pokemon_species ps ON ps.id = pf.species_id
+			JOIN pokemon p ON p.id = rp.form_id
 			LEFT JOIN location l ON l.id = rp.met_location_id
 			WHERE rp.run_id = ?`
 		if !showFainted {
@@ -235,7 +235,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var e BoxEntry
 			var alive int
-			if err := rows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.MetLocation, &alive); err != nil {
+			if err := rows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.CaughtLevel, &e.AcquisitionType, &e.MetLocation, &alive); err != nil {
 				continue
 			}
 			e.IsAlive = alive == 1
@@ -394,14 +394,28 @@ func buildTeamPage(c *gin.Context, db *sql.DB, runID int) (TeamPage, error) {
 		}
 		if s.FormID != nil {
 			db.QueryRow(`
-				SELECT ps.name, pf.form_name
-				FROM pokemon_form pf
-				JOIN pokemon_species ps ON ps.id = pf.species_id
-				WHERE pf.id = ?`, *s.FormID).Scan(&s.SpeciesName, &s.FormName) //nolint:errcheck
-			// Resolve move names for overview display
+				SELECT p.species_name, p.form_name
+				FROM pokemon p
+				WHERE p.id = ?`, *s.FormID).Scan(&s.SpeciesName, &s.FormName) //nolint:errcheck
+			// Resolve move details for overview display and tooltips
 			for i, mid := range s.MoveIDs {
 				if mid != nil {
-					db.QueryRow(`SELECT name FROM move WHERE id = ?`, *mid).Scan(&s.MoveNames[i]) //nolint:errcheck
+					var chip MoveChip
+					var power, accuracy sql.NullInt64
+					db.QueryRow( //nolint:errcheck
+						`SELECT name, COALESCE(damage_class,''), power, accuracy, pp, COALESCE(effect_entry,'')
+						FROM move WHERE id = ?`, *mid,
+					).Scan(&chip.Name, &chip.DamageClass, &power, &accuracy, &chip.PP, &chip.Effect)
+					if power.Valid {
+						v := int(power.Int64)
+						chip.Power = &v
+					}
+					if accuracy.Valid {
+						v := int(accuracy.Int64)
+						chip.Accuracy = &v
+					}
+					s.MoveNames[i] = chip.Name
+					s.Moves[i] = chip
 				}
 			}
 		}
@@ -435,10 +449,9 @@ func buildTeamSlotPage(c *gin.Context, db *sql.DB, runID, slotNum int, legalErro
 	// Add any Pokémon already owned (starters, gifts, prior catches) that
 	// aren't already in the encounter list so they can be placed on the team.
 	boxAcqRows, _ := db.Query(`
-		SELECT DISTINCT pf.id, ps.name, pf.form_name
+		SELECT DISTINCT p.id, p.species_name, p.form_name
 		FROM run_pokemon rp
-		JOIN pokemon_form pf ON pf.id = rp.form_id
-		JOIN pokemon_species ps ON ps.id = pf.species_id
+		JOIN pokemon p ON p.id = rp.form_id
 		WHERE rp.run_id = ? AND rp.is_alive = 1
 	`, runID)
 	if boxAcqRows != nil {
@@ -493,10 +506,9 @@ func buildTeamSlotPage(c *gin.Context, db *sql.DB, runID, slotNum int, legalErro
 			slot.LegalMoves = append(slot.LegalMoves, moveToOption(mv))
 		}
 		db.QueryRow(`
-			SELECT ps.name, pf.form_name
-			FROM pokemon_form pf
-			JOIN pokemon_species ps ON ps.id = pf.species_id
-			WHERE pf.id = ?`, *slot.FormID).Scan(&slot.SpeciesName, &slot.FormName) //nolint:errcheck
+			SELECT p.species_name, p.form_name
+			FROM pokemon p
+			WHERE p.id = ?`, *slot.FormID).Scan(&slot.SpeciesName, &slot.FormName) //nolint:errcheck
 	}
 
 	return TeamSlotPage{

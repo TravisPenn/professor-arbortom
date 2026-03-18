@@ -18,13 +18,12 @@
         <h2>Available Pokémon ({{len .Acquisitions}})</h2>
         {{if .Acquisitions}}
         <table class="candidate-table">
-          <thead><tr><th>Species</th><th>Location</th><th>Method</th><th>Levels</th><th></th></tr></thead>
+          <thead><tr><th>Species</th><th>Location</th><th>Level Range</th><th></th></tr></thead>
           <tbody>
             {{range .Acquisitions}}
             <tr class="{{if .BlockedByRule}}row-blocked{{end}}">
               <td>{{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}}</td>
               <td>{{.LocationName}}</td>
-              <td>{{.Method}}</td>
               <td>{{.MinLevel}}–{{.MaxLevel}}</td>
               <td>{{if .BlockedByRule}}<span class="badge-blocked">{{.BlockedByRule}}</span>{{end}}</td>
             </tr>
@@ -66,12 +65,14 @@
         <h3>Slot {{.Slot}} · {{.SpeciesName}}{{if .Level}} <span class="muted">(Lv {{.Level}})</span>{{end}}</h3>
         {{if .Moves}}
         <table class="candidate-table">
-          <thead><tr><th>Move</th><th>Type</th><th>Learn Method</th><th>Evo</th></tr></thead>
+          <thead><tr><th>Move</th><th>Type</th><th>Pwr</th><th>Acc</th><th>Learn Method</th><th>Evo</th></tr></thead>
           <tbody>
             {{range .Moves}}
-            <tr{{if .EvoNote}} class="row-evo-note"{{end}}>
-              <td>{{.Name}}</td>
+            <tr{{if eq .LearnMethod "evo-exclusive"}} class="row-evo-exclusive"{{else if .EvoNote}} class="row-evo-note"{{end}}>
+              <td title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}}{{if .PP}} · PP {{.PP}}{{end}}{{if .Effect}} · {{.Effect}}{{end}}">{{if eq .LearnMethod "evo-exclusive"}}<em>{{.Name}}</em>{{else}}{{.Name}}{{end}}</td>
               <td><span class="type-badge type-{{.TypeName}}">{{.TypeName}}</span></td>
+              <td>{{if .Power}}{{deref .Power}}{{else}}—{{end}}</td>
+              <td>{{if .Accuracy}}{{deref .Accuracy}}{{else}}—{{end}}</td>
               <td>{{.LearnMethod}}{{if .Level}} (lv {{.Level}}){{end}}{{if .TMNumber}} (TM{{printf "%02d" .TMNumber}}){{end}}{{if .HMNumber}} (HM{{printf "%02d" .HMNumber}}){{end}}{{if .TutorLocation}} — {{.TutorLocation}}{{end}}</td>
               <td class="muted">{{.EvoNote}}</td>
             </tr>
@@ -110,6 +111,32 @@
 
     <!-- Right: Team Insights + Ask the Professor -->
     <div class="coach-panel">
+
+      {{if .NextOpponents}}
+      <section class="coach-section next-battle">
+        <h2>Next Battle</h2>
+        {{range .NextOpponents}}
+        <div class="opponent-card">
+          <h3>{{.Name}} <span class="type-badge type-{{lower .TypeSpecialty}}">{{.TypeSpecialty | title}}</span></h3>
+          <p class="opponent-location">&#128205; {{.LocationName}}</p>
+          {{if .Team}}
+          <table class="candidate-table opponent-team">
+            <thead><tr><th>Pokémon</th><th>Lv</th><th>Moves</th></tr></thead>
+            <tbody>
+              {{range .Team}}
+              <tr>
+                <td>{{.SpeciesName | title}}</td>
+                <td>{{.Level}}</td>
+                <td class="opponent-moves">{{join .Moves " · "}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+          {{end}}
+        </div>
+        {{end}}
+      </section>
+      {{end}}
 
       {{if .TeamInsights}}
       <section class="coach-insights">
@@ -172,7 +199,7 @@
             <span class="evo-from">{{.SpeciesName}}</span>
             {{range .Paths}}
             <div class="evo-path{{if .FullyLegal}} evo-legal{{else}} evo-blocked{{end}}">
-              {{range .Steps}}→ {{.ToSpeciesName}} <span class="muted">({{.Trigger}}{{if .BlockedBy}} · <span class="badge-blocked">{{.BlockedBy}}</span>{{end}})</span>{{end}}
+              {{range .Steps}}→ {{.ToSpeciesName}} <span class="muted">({{evoMethod .Trigger .Conditions}}{{if .BlockedBy}} · <span class="badge-blocked">{{.BlockedBy}}</span>{{end}})</span>{{end}}
               {{if not .FullyLegal}}{{if .BlockReason}} <span class="badge-blocked">{{.BlockReason}}</span>{{end}}{{end}}
             </div>
             {{end}}
@@ -184,7 +211,7 @@
       </section>
       {{end}}
 
-      {{if .ZeroClawAvailable}}
+      {{if .CoachAvailable}}
 
       <section class="coach-ask">
         <h2>Ask the Professor</h2>
@@ -215,7 +242,7 @@
       <div class="coach-unavailable">
         <h2>AI coaching unavailable</h2>
         <p>
-          Configure <code>ZEROCLAW_GATEWAY</code> in <code>.env</code> and restart
+          Configure <code>COACH_HOST</code> in <code>.env</code> and restart
           the service to enable the Professor AI coach.
         </p>
         <p>
