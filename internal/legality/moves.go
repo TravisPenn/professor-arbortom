@@ -357,7 +357,16 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 	seen := make(map[string]bool)
 	for _, evo := range allEvos {
 		rows, err := db.Query(`
-			SELECT m.id, m.name, m.type_name, le.learn_method, le.level_learned
+			SELECT m.id,
+			       m.name,
+			       m.type_name,
+			       m.power,
+			       m.accuracy,
+			       m.pp,
+			       m.damage_class,
+			       m.effect_entry,
+			       le.learn_method,
+			       le.level_learned
 			FROM learnset_entry le
 			JOIN move m ON m.id = le.move_id
 			WHERE le.form_id = ? AND le.version_group_id = ?
@@ -369,7 +378,18 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 		}
 		for rows.Next() {
 			var mv Move
-			if rows.Scan(&mv.MoveID, &mv.Name, &mv.TypeName, &mv.LearnMethod, &mv.LevelLearned) != nil {
+			if rows.Scan(
+				&mv.MoveID,
+				&mv.Name,
+				&mv.TypeName,
+				&mv.Power,
+				&mv.Accuracy,
+				&mv.PP,
+				&mv.DamageClass,
+				&mv.EffectEntry,
+				&mv.LearnMethod,
+				&mv.LevelLearned,
+			) != nil {
 				continue
 			}
 			// Skip if base form can learn it or we already added it.
