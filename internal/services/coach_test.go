@@ -272,3 +272,10 @@ func TestValidateConfig_NoHost(t *testing.T) {
 		t.Fatal("empty host should be rejected")
 	}
 }
+
+func TestValidateConfig_HostSetEmptyModel(t *testing.T) {
+	cc := NewCoachClient("http://ollama-lxc:11434", "", "")
+	if err := cc.ValidateConfig(); err == nil {
+		t.Fatal("empty model with non-empty host should be rejected")
+	}
+}
