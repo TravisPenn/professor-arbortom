@@ -112,6 +112,9 @@ func (c *CoachClient) ValidateConfig() error {
 	if u.Host == "" {
 		return fmt.Errorf("coach: host URL has no host")
 	}
+	if c.model == "" {
+		return fmt.Errorf("coach: model must be set when host is enabled")
+	}
 	return nil
 }
 
