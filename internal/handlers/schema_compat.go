@@ -1,6 +1,11 @@
 package handlers
 
-import "database/sql"
+import (
+	"database/sql"
+	"regexp"
+)
+
+var sqliteIdentifierRegexp = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
 // tableExists reports whether a table is present in the connected SQLite DB.
 func tableExists(db *sql.DB, tableName string) bool {
@@ -14,6 +19,11 @@ func tableExists(db *sql.DB, tableName string) bool {
 
 // columnExists reports whether a column exists on a table in SQLite.
 func columnExists(db *sql.DB, tableName, columnName string) bool {
+	if !sqliteIdentifierRegexp.MatchString(tableName) {
+		// Reject invalid table names to avoid SQL injection and malformed PRAGMA statements.
+		return false
+	}
+
 	rows, err := db.Query(`PRAGMA table_info(` + tableName + `)`)
 	if err != nil {
 		return false
