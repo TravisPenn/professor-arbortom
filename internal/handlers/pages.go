@@ -330,6 +330,7 @@ type CoachAnswer struct {
 	Text      string
 	Model     string
 	Truncated bool
+	Question  string // non-empty when responding to a user question (vs. auto-recommendation)
 }
 
 // ─── Coach payload enrichment types (COACH-006) ───────────────────────────────
