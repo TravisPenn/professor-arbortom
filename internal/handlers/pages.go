@@ -278,6 +278,7 @@ type CoachPage struct {
 	PartyMoves     []PartyMoveSummary
 	LegalItems     []ItemOption
 	CoachAnswer    *CoachAnswer
+	CoachError     string // non-empty when LLM was available but query failed
 	PlayerQuestion string
 	TeamInsights   *TeamInsights
 	NextOpponents  []OpponentSummary // COACH-015

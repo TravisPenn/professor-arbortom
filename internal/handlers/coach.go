@@ -12,14 +12,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// defaultRecommendationPrompt is sent to the LLM on every page load when no
+// user question is present, producing an automatic recommendation.
+const defaultRecommendationPrompt = "Survey my current team, available Pokémon, " +
+	"and upcoming opponents, then give your top 2\u20133 recommendations for what I should focus on next."
+
 // ShowCoach renders GET /runs/:run_id/coach
 func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
-		page, err := buildCoachPage(c, db, pokeClient, run.ID, zc.IsAvailable())
+		available := zc.IsAvailable()
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, available)
 		if err != nil {
 			respondError(c, err)
 			return
+		}
+		if available {
+			payload, perr := buildCoachPayload(db, run.ID, page, defaultRecommendationPrompt)
+			if perr == nil {
+				response := zc.QueryCoach(run.ID, payload)
+				if response.Available {
+					page.CoachAnswer = &CoachAnswer{
+						Text:      response.Answer,
+						Model:     response.Model,
+						Truncated: response.Truncated,
+					}
+				}
+			}
 		}
 		c.HTML(http.StatusOK, "coach.html", page)
 	}
@@ -65,7 +84,7 @@ func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient
 				Truncated: response.Truncated,
 			}
 		} else {
-			page.CoachAvailable = false
+			page.CoachError = "The Professor could not be reached right now. Please try again."
 		}
 
 		c.HTML(http.StatusOK, "coach.html", page)

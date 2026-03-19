@@ -227,13 +227,19 @@
 
       {{if .CoachAnswer}}
       <section class="coach-answer">
-        <h2>Professor's Answer</h2>
+        <h2>{{if .PlayerQuestion}}Professor's Answer{{else}}Professor's Recommendation{{end}}</h2>
         {{/* SEC-018: CoachAnswer.Text is LLM output — auto-escaped by html/template.
              NEVER use safeHTML or template.HTML here. */}}
         <div class="answer-text">{{.CoachAnswer.Text}}</div>
         <p class="muted">Model: {{.CoachAnswer.Model}}
           {{if .CoachAnswer.Truncated}} · <span class="badge-warning">truncated</span>{{end}}
         </p>
+      </section>
+      {{end}}
+
+      {{if .CoachError}}
+      <section class="coach-answer">
+        <p class="badge-blocked">{{.CoachError}}</p>
       </section>
       {{end}}
 
