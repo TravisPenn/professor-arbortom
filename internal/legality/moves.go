@@ -386,7 +386,7 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 				&mv.Accuracy,
 				&mv.PP,
 				&mv.DamageClass,
-				&mv.EffectEntry,
+				&mv.Effect,
 				&mv.LearnMethod,
 				&mv.LevelLearned,
 			) != nil {
