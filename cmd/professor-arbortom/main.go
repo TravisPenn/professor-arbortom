@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -142,6 +143,18 @@ func main() {
 		"lower": strings.ToLower,
 		"title": strings.Title, //nolint:staticcheck // acceptable for display
 		"join":  strings.Join,
+		// formatCoach safely renders LLM output: HTML-escape first, then
+		// convert newlines to <br> and **bold** to <strong>.
+		"formatCoach": func(s string) template.HTML {
+			// Step 1: HTML-escape the raw LLM text (prevents XSS)
+			safe := template.HTMLEscapeString(s)
+			// Step 2: convert **bold** markers to <strong> tags
+			re := regexp.MustCompile(`\*\*(.+?)\*\*`)
+			safe = re.ReplaceAllString(safe, "<strong>$1</strong>")
+			// Step 3: convert newlines to <br>
+			safe = strings.ReplaceAll(safe, "\n", "<br>")
+			return template.HTML(safe) //nolint:gosec // XSS-safe: input is HTML-escaped before any tag insertion
+		},
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(poketemplates.FS, "*.html")
 	if err != nil {
@@ -206,6 +219,7 @@ func main() {
 			run.GET("/rules", handlers.ShowRules(database))
 			run.POST("/rules", handlers.UpdateRules(database))
 			run.GET("/coach", handlers.ShowCoach(database, pokeClient, zc))
+			run.GET("/coach/recommendation", handlers.GetRecommendation(database, pokeClient, zc))
 			run.POST("/coach", handlers.QueryCoach(database, pokeClient, zc))
 		}
 	}

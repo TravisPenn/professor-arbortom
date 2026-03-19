@@ -7,7 +7,7 @@
 {{template "run-banner" .}}
 {{template "flash" .}}
 <main>
-  <h1>Professor's Coach</h1>
+  <h1>Professor Arbortom's Notes</h1>
 
   <div class="coach-layout">
 
@@ -215,26 +215,30 @@
 
       <section class="coach-ask">
         <h2>Ask the Professor</h2>
-        <form method="POST" action="/runs/{{.RunContext.ID}}/coach">
+        <form id="coach-form" method="POST" action="/runs/{{.RunContext.ID}}/coach">
           <div class="form-row">
             <label for="question">Your question</label>
             <textarea id="question" name="question" rows="4"
                       placeholder="e.g. Should I use Arcanine or Charizard on my team?">{{.PlayerQuestion}}</textarea>
           </div>
-          <button type="submit" class="btn btn-primary">Ask Professor</button>
+          <button type="submit" id="coach-submit" class="btn btn-primary">Ask Professor</button>
         </form>
       </section>
 
       {{if .CoachAnswer}}
-      <section class="coach-answer">
+      {{/* POST fallback: full-page submit returned an answer — render it directly */}}
+      <section class="coach-answer" id="coach-rec-container">
         <h2>{{if .PlayerQuestion}}Professor's Answer{{else}}Professor's Recommendation{{end}}</h2>
-        {{/* SEC-018: CoachAnswer.Text is LLM output — auto-escaped by html/template.
-             NEVER use safeHTML or template.HTML here. */}}
-        <div class="answer-text">{{.CoachAnswer.Text}}</div>
+        <div class="answer-text">{{formatCoach .CoachAnswer.Text}}</div>
         <p class="muted">Model: {{.CoachAnswer.Model}}
           {{if .CoachAnswer.Truncated}} · <span class="badge-warning">truncated</span>{{end}}
         </p>
       </section>
+      {{else}}
+      {{/* Async: placeholder filled by JS fetch to /coach/recommendation */}}
+      <div id="coach-rec-container" class="coach-loading-container">
+        <p class="coach-loading muted">Consulting Professor Arbortom…</p>
+      </div>
       {{end}}
 
       {{if .CoachError}}
@@ -242,6 +246,8 @@
         <p class="badge-blocked">{{.CoachError}}</p>
       </section>
       {{end}}
+
+      <script src="/static/coach.js" data-run-id="{{.RunContext.ID}}"></script>
 
       {{else}}
 

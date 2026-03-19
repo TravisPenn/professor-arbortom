@@ -1,0 +1,8 @@
+{{define "coach-recommendation.html"}}
+<section class="coach-answer">
+  <h2>{{if .Question}}Professor's Answer{{else}}Professor's Recommendation{{end}}</h2>
+  {{/* SEC-018: .Text is LLM output — formatCoach HTML-escapes first, then applies safe bold/br rendering. */}}
+  <div class="answer-text">{{formatCoach .Text}}</div>
+  <p class="muted">Model: {{.Model}}{{if .Truncated}} · <span class="badge-warning">truncated</span>{{end}}</p>
+</section>
+{{end}}
