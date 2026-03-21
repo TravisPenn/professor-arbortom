@@ -688,7 +688,8 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 	//    TMs are only recommended if a party member can learn them.
 	//    Check both current and next badge sections since players are between gyms.
 	//    Skipped when the no_item_locations rule is active.
-	if currentLocation != "" && activeRules["no_item_locations"] == nil {
+	_, noItems := activeRules["no_item_locations"]
+	if currentLocation != "" && !noItems {
 		// Build set of TM move names the party can learn (lowercase for matching).
 		partyTMs := map[string]bool{}
 		for _, pm := range page.PartyMoves {
@@ -1016,7 +1017,7 @@ func buildWalkthroughContext(versionName string, badgeCount int, currentLocation
 
 	// 2. Items & TMs — filtered to the player's current location when possible.
 	//    Skipped when the no_item_locations rule is active.
-	if activeRules["no_item_locations"] == nil {
+	if _, noItemsWT := activeRules["no_item_locations"]; !noItemsWT {
 		if items := walkthroughs.SubSection(section, "Items & TMs"); items != "" {
 			filtered := walkthroughs.FilterTableByLocation(items, currentLocation)
 			sb.WriteString("\n")
