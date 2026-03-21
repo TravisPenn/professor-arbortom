@@ -685,17 +685,17 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 
 	// 5. Walkthrough items at current location — surface TMs/items the player
 	//    can pick up right now, extracted from the embedded walkthrough guide.
-	//    TMs are only recommended if a party member can learn them.
+	//    For TMs, annotate which party member can learn it.
 	//    Check both current and next badge sections since players are between gyms.
 	//    Skipped when the no_item_locations rule is active.
 	_, noItems := activeRules["no_item_locations"]
 	if currentLocation != "" && !noItems {
-		// Build set of TM move names the party can learn (lowercase for matching).
-		partyTMs := map[string]bool{}
+		// Build map of TM move name → species that can learn it.
+		tmLearners := map[string]string{} // lowercase move name → species
 		for _, pm := range page.PartyMoves {
 			for _, mv := range pm.Moves {
 				if mv.TMNumber > 0 {
-					partyTMs[strings.ToLower(mv.Name)] = true
+					tmLearners[strings.ToLower(mv.Name)] = pm.SpeciesName
 				}
 			}
 		}
@@ -733,18 +733,18 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 				if !strings.Contains(normLoc, hint) && !strings.Contains(hint, normLoc) {
 					continue
 				}
-				// If this is a TM, only recommend if a party member can learn it.
+				rec := fmt.Sprintf("Pick up %s at %s.", itemDesc, loc)
+				// For TMs, annotate which party member can learn it.
 				if strings.HasPrefix(itemDesc, "TM") {
-					// Extract move name: "TM05 Roar (hidden)" → "roar"
-					tmParts := strings.SplitN(itemDesc, " ", 3) // ["TM05", "Roar", "(hidden)"]
+					tmParts := strings.SplitN(itemDesc, " ", 3) // ["TM05", "Roar", ...]
 					if len(tmParts) >= 2 {
 						moveName := strings.ToLower(tmParts[1])
-						if !partyTMs[moveName] {
-							continue // no one on the team can learn it
+						if species, ok := tmLearners[moveName]; ok {
+							rec = fmt.Sprintf("Pick up %s at %s — %s can learn it.", itemDesc, loc, capitalizeVersion(species))
 						}
 					}
 				}
-				recs = append(recs, fmt.Sprintf("Pick up %s at %s.", itemDesc, loc))
+				recs = append(recs, rec)
 			}
 		}
 	}
