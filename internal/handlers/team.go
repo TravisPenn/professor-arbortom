@@ -238,6 +238,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 			if err := rows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.CaughtLevel, &e.AcquisitionType, &e.MetLocation, &alive); err != nil {
 				continue
 			}
+			e.MetLocation = humanizeLocationName(e.MetLocation)
 			e.IsAlive = alive == 1
 			entries = append(entries, e)
 		}

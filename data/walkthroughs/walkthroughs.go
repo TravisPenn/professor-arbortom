@@ -116,7 +116,7 @@ func FilterTableByLocation(tableSection, locationHint string) string {
 	if locationHint == "" {
 		return tableSection
 	}
-	hint := normalizeLocation(locationHint)
+	hint := NormalizeLocation(locationHint)
 
 	lines := strings.Split(tableSection, "\n")
 	var header []string
@@ -136,7 +136,7 @@ func FilterTableByLocation(tableSection, locationHint string) string {
 		total++
 		cols := strings.SplitN(trimmed, "|", 3)
 		if len(cols) >= 2 {
-			loc := normalizeLocation(cols[1])
+			loc := NormalizeLocation(cols[1])
 			if strings.Contains(loc, hint) || strings.Contains(hint, loc) {
 				matched = append(matched, line)
 			}
@@ -150,9 +150,9 @@ func FilterTableByLocation(tableSection, locationHint string) string {
 	return strings.Join(header, "\n") + "\n" + strings.Join(matched, "\n")
 }
 
-// normalizeLocation converts both DB slugs ("kanto-route-4") and walkthrough
+// NormalizeLocation converts both DB slugs ("kanto-route-4") and walkthrough
 // display names ("Route 4") to a comparable form.
-func normalizeLocation(s string) string {
+func NormalizeLocation(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.ReplaceAll(s, "-", " ")
 	s = strings.ReplaceAll(s, "_", " ")

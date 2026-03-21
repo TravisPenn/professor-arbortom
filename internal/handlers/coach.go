@@ -260,6 +260,11 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 	insights, _ := buildTeamInsights(db, runID)
 	opponents, _ := nextOpponents(db, runID)
 
+	// Humanize location names from legality engine (DB slugs → display names).
+	for i := range acqs {
+		acqs[i].LocationName = humanizeLocationName(acqs[i].LocationName)
+	}
+
 	return CoachPage{
 		BasePage: BasePage{
 			PageTitle:  "Professor Arbortom",
@@ -452,6 +457,7 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		`SELECT COALESCE(l.name, '') FROM run r LEFT JOIN location l ON l.id = r.current_location_id WHERE r.id = ?`,
 		runID,
 	).Scan(&currentLocationName) //nolint:errcheck
+	currentLocationName = humanizeLocationName(currentLocationName)
 
 	var maxPartyLevel int
 	for _, pm := range page.PartyMoves {
@@ -505,15 +511,15 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		Question:    question,
 		ContextNote: contextNote,
 		GameSummary: buildGameSummary(page, activeRules, versionName, badgeCount, maxPartyLevel, currentLocationName) +
-			buildWalkthroughContext(versionName, badgeCount, currentLocationName) +
-			buildPreComputedRecommendations(page),
+			buildWalkthroughContext(versionName, badgeCount, currentLocationName, activeRules) +
+			buildPreComputedRecommendations(page, versionName, badgeCount, currentLocationName, activeRules),
 	}, nil
 }
 
 // buildPreComputedRecommendations generates server-side verified recommendations
 // from the structured game data. These are facts the LLM merely needs to present
 // — it cannot hallucinate names, types, or levels because they're computed here.
-func buildPreComputedRecommendations(page CoachPage) string {
+func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
 	var recs []string
 
 	// Determine next opponent info for type-relevance scoring
@@ -673,6 +679,71 @@ func buildPreComputedRecommendations(page CoachPage) string {
 					}
 				}
 				break // only first path per pokemon
+			}
+		}
+	}
+
+	// 5. Walkthrough items at current location — surface TMs/items the player
+	//    can pick up right now, extracted from the embedded walkthrough guide.
+	//    TMs are only recommended if a party member can learn them.
+	//    Check both current and next badge sections since players are between gyms.
+	//    Skipped when the no_item_locations rule is active.
+	if currentLocation != "" && activeRules["no_item_locations"] == nil {
+		// Build set of TM move names the party can learn (lowercase for matching).
+		partyTMs := map[string]bool{}
+		for _, pm := range page.PartyMoves {
+			for _, mv := range pm.Moves {
+				if mv.TMNumber > 0 {
+					partyTMs[strings.ToLower(mv.Name)] = true
+				}
+			}
+		}
+
+		hint := walkthroughs.NormalizeLocation(currentLocation)
+		for _, bc := range []int{badgeCount, badgeCount + 1} {
+			section := walkthroughs.Lookup(versionName, bc)
+			if section == "" {
+				continue
+			}
+			items := walkthroughs.SubSection(section, "Items & TMs")
+			if items == "" {
+				continue
+			}
+			headerSkipped := 0
+			for _, line := range strings.Split(items, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if !strings.Contains(trimmed, "|") {
+					continue
+				}
+				if headerSkipped < 2 {
+					headerSkipped++
+					continue
+				}
+				cols := strings.Split(trimmed, "|")
+				if len(cols) < 3 {
+					continue
+				}
+				loc := strings.TrimSpace(cols[1])
+				itemDesc := strings.TrimSpace(cols[2])
+				if loc == "" || itemDesc == "" || itemDesc == "—" {
+					continue
+				}
+				normLoc := walkthroughs.NormalizeLocation(loc)
+				if !strings.Contains(normLoc, hint) && !strings.Contains(hint, normLoc) {
+					continue
+				}
+				// If this is a TM, only recommend if a party member can learn it.
+				if strings.HasPrefix(itemDesc, "TM") {
+					// Extract move name: "TM05 Roar (hidden)" → "roar"
+					tmParts := strings.SplitN(itemDesc, " ", 3) // ["TM05", "Roar", "(hidden)"]
+					if len(tmParts) >= 2 {
+						moveName := strings.ToLower(tmParts[1])
+						if !partyTMs[moveName] {
+							continue // no one on the team can learn it
+						}
+					}
+				}
+				recs = append(recs, fmt.Sprintf("Pick up %s at %s.", itemDesc, loc))
 			}
 		}
 	}
@@ -928,7 +999,7 @@ func buildGameSummary(page CoachPage, activeRules map[string]interface{}, versio
 //  4. Side Quests — when present.
 //
 // This keeps the payload focused on the player's actual progress.
-func buildWalkthroughContext(versionName string, badgeCount int, currentLocation string) string {
+func buildWalkthroughContext(versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
 	section := walkthroughs.Lookup(versionName, badgeCount)
 	if section == "" {
 		return ""
@@ -944,11 +1015,14 @@ func buildWalkthroughContext(versionName string, badgeCount int, currentLocation
 	}
 
 	// 2. Items & TMs — filtered to the player's current location when possible.
-	if items := walkthroughs.SubSection(section, "Items & TMs"); items != "" {
-		filtered := walkthroughs.FilterTableByLocation(items, currentLocation)
-		sb.WriteString("\n")
-		sb.WriteString(filtered)
-		sb.WriteByte('\n')
+	//    Skipped when the no_item_locations rule is active.
+	if activeRules["no_item_locations"] == nil {
+		if items := walkthroughs.SubSection(section, "Items & TMs"); items != "" {
+			filtered := walkthroughs.FilterTableByLocation(items, currentLocation)
+			sb.WriteString("\n")
+			sb.WriteString(filtered)
+			sb.WriteByte('\n')
+		}
 	}
 
 	// 3. Unlocks — key progression gates.
@@ -1092,7 +1166,7 @@ func nextOpponents(db *sql.DB, runID int) ([]OpponentSummary, error) {
 		summaries = append(summaries, OpponentSummary{
 			Name:          name,
 			TypeSpecialty: typeSpecialty,
-			LocationName:  locationName,
+			LocationName:  humanizeLocationName(locationName),
 			BadgeOrder:    badgeOrder,
 			Team:          team,
 		})
