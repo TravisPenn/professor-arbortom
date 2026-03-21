@@ -142,6 +142,17 @@ func TestFilterTableByLocation(t *testing.T) {
 	if fallback != items {
 		t.Error("unmatched location should fall back to full table")
 	}
+
+	// Filter with humanized name (what the UI now passes)
+	badge2 := Lookup("leafgreen", 2)
+	items2 := SubSection(badge2, "Items & TMs")
+	if items2 == "" {
+		t.Fatal("need Items & TMs for badge 2")
+	}
+	humanized := FilterTableByLocation(items2, "Route 4")
+	if !strings.Contains(humanized, "TM05") {
+		t.Error("humanized 'Route 4' should match row with TM05 Roar")
+	}
 }
 
 func TestNormalizeLocation(t *testing.T) {
@@ -155,9 +166,9 @@ func TestNormalizeLocation(t *testing.T) {
 		{"  hoenn-route-110 ", "route 110"},
 	}
 	for _, tc := range tests {
-		got := normalizeLocation(tc.input)
+		got := NormalizeLocation(tc.input)
 		if got != tc.expected {
-			t.Errorf("normalizeLocation(%q) = %q, want %q", tc.input, got, tc.expected)
+			t.Errorf("NormalizeLocation(%q) = %q, want %q", tc.input, got, tc.expected)
 		}
 	}
 }
