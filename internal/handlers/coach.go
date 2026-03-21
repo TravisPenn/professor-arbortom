@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/TravisPenn/professor-arbortom/data/walkthroughs"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
@@ -20,6 +21,15 @@ const defaultRecommendationPrompt = "Present the VERIFIED RECOMMENDATIONS above 
 	"locations, or moves beyond what the verified recommendations state. " +
 	"If a recommendation says a Pokémon is a certain type, use exactly that type. " +
 	"Use **bold** for Pokémon, move, and item names. Number each tip."
+
+// wrapUserQuestion wraps an open-ended player question with grounding instructions
+// so the model answers strictly from the provided game state rather than hallucinating.
+func wrapUserQuestion(q string) string {
+	return "Answer this question using ONLY the game data provided above. " +
+		"If the answer is not in the data, say you don't have that information. " +
+		"Do NOT use outside knowledge about TM numbers, move names, locations, or types — " +
+		"only reference what appears in the game state context.\n\nPlayer question: " + q
+}
 
 // ShowCoach renders GET /runs/:run_id/coach
 func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
@@ -60,7 +70,7 @@ func GetRecommendation(db *sql.DB, pokeClient *pokeapi.Client, zc *services.Coac
 
 		prompt := defaultRecommendationPrompt
 		if question != "" {
-			prompt = question
+			prompt = wrapUserQuestion(question)
 		}
 
 		payload, err := buildCoachPayload(db, run.ID, page, prompt)
@@ -107,7 +117,7 @@ func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient
 			return
 		}
 
-		payload, err := buildCoachPayload(db, run.ID, page, question)
+		payload, err := buildCoachPayload(db, run.ID, page, wrapUserQuestion(question))
 		if err != nil {
 			respondError(c, err)
 			return
@@ -252,7 +262,7 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 
 	return CoachPage{
 		BasePage: BasePage{
-			PageTitle:  "Coach",
+			PageTitle:  "Professor Arbortom",
 			ActiveNav:  "coach",
 			RunContext: buildRunContext(c),
 		},
@@ -495,6 +505,7 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		Question:    question,
 		ContextNote: contextNote,
 		GameSummary: buildGameSummary(page, activeRules, versionName, badgeCount, maxPartyLevel, currentLocationName) +
+			buildWalkthroughContext(versionName, badgeCount, currentLocationName) +
 			buildPreComputedRecommendations(page),
 	}, nil
 }
@@ -904,6 +915,54 @@ func buildGameSummary(page CoachPage, activeRules map[string]interface{}, versio
 				sb.WriteString(line + "\n")
 			}
 		}
+	}
+
+	return sb.String()
+}
+
+// buildWalkthroughContext returns targeted walkthrough context for the LLM.
+// Instead of dumping the full badge section, it extracts:
+//  1. Section header (gym info, threats, strategy) — always included.
+//  2. Items & TMs filtered to the player's current location.
+//  3. Unlocks — what opens after this badge.
+//  4. Side Quests — when present.
+//
+// This keeps the payload focused on the player's actual progress.
+func buildWalkthroughContext(versionName string, badgeCount int, currentLocation string) string {
+	section := walkthroughs.Lookup(versionName, badgeCount)
+	if section == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nWALKTHROUGH (current progression):\n")
+
+	// 1. Gym/strategy header (everything before the first ### sub-section).
+	if hdr := walkthroughs.SectionHeader(section); hdr != "" {
+		sb.WriteString(hdr)
+		sb.WriteByte('\n')
+	}
+
+	// 2. Items & TMs — filtered to the player's current location when possible.
+	if items := walkthroughs.SubSection(section, "Items & TMs"); items != "" {
+		filtered := walkthroughs.FilterTableByLocation(items, currentLocation)
+		sb.WriteString("\n")
+		sb.WriteString(filtered)
+		sb.WriteByte('\n')
+	}
+
+	// 3. Unlocks — key progression gates.
+	if unlocks := walkthroughs.SubSection(section, "Unlocks"); unlocks != "" {
+		sb.WriteString("\n")
+		sb.WriteString(unlocks)
+		sb.WriteByte('\n')
+	}
+
+	// 4. Side Quests — Oak's Aides, etc.
+	if sq := walkthroughs.SubSection(section, "Side Quests"); sq != "" {
+		sb.WriteString("\n")
+		sb.WriteString(sq)
+		sb.WriteByte('\n')
 	}
 
 	return sb.String()

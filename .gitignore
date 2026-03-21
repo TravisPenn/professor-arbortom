@@ -4,10 +4,14 @@ pokemonprofessor-linux-amd64
 
 # Environment
 .env
+*.env
+pokemonprofessor.env
 
 # SQLite database
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 
 # Build artifacts
 dist/

@@ -73,6 +73,7 @@
   </form>
 
   {{if .Log}}
+  <div class="table-scroll">
   <table class="route-table">
     <thead>
       <tr>
@@ -97,6 +98,7 @@
       {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}
   <p class="empty-state">No encounters logged yet.</p>
   {{end}}
