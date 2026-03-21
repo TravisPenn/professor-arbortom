@@ -40,6 +40,7 @@
         <h2>Team</h2>
         <a href="/runs/{{.RunContext.ID}}/team" class="btn btn-sm">Edit</a>
       </div>
+      <div class="table-scroll">
       <table class="overview-team-table">
         <tbody>
           {{range .TeamSlots}}
@@ -53,6 +54,7 @@
           {{end}}
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- ── Box ───────────────────────────────────────────────────────── -->
@@ -76,6 +78,7 @@
         <a href="/runs/{{.RunContext.ID}}/routes" class="btn btn-sm">Log</a>
       </div>
       {{if .RecentRoutes}}
+      <div class="table-scroll">
       <table class="overview-routes-table">
         <tbody>
           {{range .RecentRoutes}}
@@ -92,6 +95,7 @@
           {{end}}
         </tbody>
       </table>
+      </div>
       {{else}}
       <p class="muted">No encounters logged yet.</p>
       {{end}}
