@@ -138,8 +138,8 @@ func (c *CoachClient) IsAvailable() bool {
 }
 
 // QueryCoach sends a coaching request to Ollama /api/chat and returns the response.
-// keep_alive is always 0 — the model is evicted from VRAM immediately after each
-// query so that the shared GPU (GTX 970) remains available for other workloads.
+// keep_alive is set to 300 seconds so the model stays in VRAM briefly between queries,
+// balancing reduced cold-start latency with the needs of other workloads on the shared GPU (GTX 970).
 // On any failure, returns CoachResponse{Available: false} — never errors.
 func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse {
 	if c.host == "" {
