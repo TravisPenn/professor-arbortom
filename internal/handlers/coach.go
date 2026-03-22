@@ -600,7 +600,6 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 		maxLv    int
 	}
 	var bestCatch *catchCandidate
-	_ = bestCatch // used below
 	for _, a := range page.Acquisitions {
 		if a.BlockedByRule != nil {
 			continue
