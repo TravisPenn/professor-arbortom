@@ -530,14 +530,18 @@ main > .coach-section, main > .coach-ask, main > .coach-unavailable {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* -- Touch-friendly tap targets everywhere -------------------------------- */
-.btn, .btn-sm, summary, .flag-label, .nav-link {
+.btn, .btn-sm, .flag-label, .nav-link {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
 }
 
-/* Make summary elements touch-friendly */
-summary { padding: 0.4rem 0; }
+/* Make summary elements touch-friendly while preserving disclosure marker */
+summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.4rem 0;
+}
 
 /* ── Tablet breakpoint (≤ 768px) ────────────────────────────────────────── */
 @media (max-width: 768px) {
