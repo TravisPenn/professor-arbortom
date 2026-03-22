@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/TravisPenn/professor-arbortom/data/walkthroughs"
@@ -781,7 +782,12 @@ func buildGameSummary(page CoachPage, activeRules map[string]interface{}, versio
 	if len(activeRules) > 0 {
 		sb.WriteString("ACTIVE RULES: ")
 		first := true
+		keys := make([]string, 0, len(activeRules))
 		for k := range activeRules {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
 			if !first {
 				sb.WriteString(", ")
 			}
