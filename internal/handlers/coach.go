@@ -525,14 +525,10 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 
 	// Determine next opponent info for type-relevance scoring
 	var oppName, oppType string
-	var oppTypes []string // types of opponent's pokemon
 	if len(page.NextOpponents) > 0 {
 		opp := page.NextOpponents[0]
 		oppName = opp.Name
 		oppType = opp.TypeSpecialty
-		for _, p := range opp.Team {
-			oppTypes = append(oppTypes, p.Types...)
-		}
 	}
 
 	// 1. Best TM upgrade: find the single best TM a party member can learn
