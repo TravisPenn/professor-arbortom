@@ -580,6 +580,33 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 	if bestTM != nil {
 		rec := fmt.Sprintf("Teach TM%02d %s (%s-type, %d power) to %s.",
 			bestTM.tmNum, bestTM.moveName, bestTM.moveType, bestTM.power, bestTM.species)
+		// Annotate where to get the TM only when confirmed via page.LegalItems,
+		// to avoid stating incorrect availability (e.g. "buy at a Poké Mart"
+		// when the TM is not actually in any shop).
+		for _, item := range page.LegalItems {
+			lower := strings.ToLower(item.Name)
+			if !strings.HasPrefix(lower, "tm") {
+				continue
+			}
+			var tmn int
+			if _, err := fmt.Sscanf(lower, "tm%d", &tmn); err != nil {
+				continue
+			}
+			if tmn != bestTM.tmNum {
+				continue
+			}
+			switch item.Source {
+			case "owned":
+				rec += " (already in your bag)"
+			case "shop":
+				rec += " (buy at the Poké Mart)"
+			case "obtainable":
+				rec += " (pick up nearby)"
+			default:
+				// Unknown source — omit availability annotation.
+			}
+			break
+		}
 		if oppName != "" {
 			rec += fmt.Sprintf(" Useful against %s's %s-type team.", oppName, oppType)
 		}
