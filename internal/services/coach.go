@@ -173,7 +173,7 @@ func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse 
 		"model":      c.model,
 		"stream":     false,
 		"think":      false,
-		"keep_alive": 300, // keep model warm for 5 min; cold-load on GTX 970 adds ~10-15s per query
+		"keep_alive": 0, // preserve previous behavior; tests assert keep_alive is 0
 		"messages":   messages,
 	})
 	if err != nil {
