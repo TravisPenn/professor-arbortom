@@ -28,6 +28,9 @@ import (
 // Version is injected at build time via -ldflags "-X main.Version=<sha>"
 var Version = "dev"
 
+// coachBoldRe is used by formatCoach to convert **bold** markers to <strong> tags.
+var coachBoldRe = regexp.MustCompile(`\*\*(.+?)\*\*`)
+
 func main() {
 	// Load .env (ignore error — env may be set by systemd EnvironmentFile)
 	_ = godotenv.Load()
@@ -149,8 +152,7 @@ func main() {
 			// Step 1: HTML-escape the raw LLM text (prevents XSS)
 			safe := template.HTMLEscapeString(s)
 			// Step 2: convert **bold** markers to <strong> tags
-			re := regexp.MustCompile(`\*\*(.+?)\*\*`)
-			safe = re.ReplaceAllString(safe, "<strong>$1</strong>")
+			safe = coachBoldRe.ReplaceAllString(safe, "<strong>$1</strong>")
 			// Step 3: convert newlines to <br>
 			safe = strings.ReplaceAll(safe, "\n", "<br>")
 			return template.HTML(safe) //nolint:gosec // XSS-safe: input is HTML-escaped before any tag insertion
