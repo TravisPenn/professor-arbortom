@@ -39,6 +39,11 @@ FORMAT:
 // Repeated page loads within this window are served instantly without hitting Ollama.
 const cacheTTL = 3 * time.Minute
 
+// cacheMaxSize is the maximum number of entries the in-memory response cache may hold.
+// On insert, expired entries are pruned first; if the cache is still at capacity the
+// entry whose TTL expires soonest is evicted (LRU-by-expiry).
+const cacheMaxSize = 256
+
 type cacheEntry struct {
 	response CoachResponse
 	expiry   time.Time
@@ -137,6 +142,32 @@ func (c *CoachClient) IsAvailable() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
+// pruneCacheLocked removes all expired entries from the cache. If the cache is
+// still at or above cacheMaxSize after expiry removal, it evicts the entry whose
+// TTL expires soonest (LRU-by-expiry) until the size is within the limit.
+// Callers must hold cacheMu.
+func (c *CoachClient) pruneCacheLocked() {
+	now := time.Now()
+	for k, e := range c.cache {
+		if now.After(e.expiry) {
+			delete(c.cache, k)
+		}
+	}
+	for len(c.cache) >= cacheMaxSize {
+		var oldestKey string
+		var oldestExpiry time.Time
+		for k, e := range c.cache {
+			if oldestKey == "" || e.expiry.Before(oldestExpiry) {
+				oldestKey = k
+				oldestExpiry = e.expiry
+			}
+		}
+		if oldestKey != "" {
+			delete(c.cache, oldestKey)
+		}
+	}
+}
+
 // QueryCoach sends a coaching request to Ollama /api/chat and returns the response.
 // keep_alive is set to 300 seconds so the model stays in VRAM briefly between queries,
 // balancing reduced cold-start latency with the needs of other workloads on the shared GPU (GTX 970).
@@ -153,10 +184,13 @@ func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse 
 	cacheRaw := fmt.Sprintf("%d\n%s\n%s", runID, userContent, payload.Question)
 	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(cacheRaw)))
 	c.cacheMu.Lock()
-	if entry, ok := c.cache[cacheKey]; ok && time.Now().Before(entry.expiry) {
-		c.cacheMu.Unlock()
-		log.Printf("[coach] cache hit (run %d)", runID)
-		return entry.response
+	if entry, ok := c.cache[cacheKey]; ok {
+		if time.Now().Before(entry.expiry) {
+			c.cacheMu.Unlock()
+			log.Printf("[coach] cache hit (run %d)", runID)
+			return entry.response
+		}
+		delete(c.cache, cacheKey) // prune stale entry on lookup
 	}
 	c.cacheMu.Unlock()
 
@@ -228,6 +262,7 @@ func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse 
 		Truncated: result.DoneReason == "length",
 	}
 	c.cacheMu.Lock()
+	c.pruneCacheLocked()
 	c.cache[cacheKey] = cacheEntry{response: resp2, expiry: time.Now().Add(cacheTTL)}
 	c.cacheMu.Unlock()
 	return resp2
