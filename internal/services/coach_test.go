@@ -1,7 +1,9 @@
 package services
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -236,6 +238,11 @@ func min(a, b int) int {
 	return b
 }
 
+// sha256Sum is a test helper that mirrors the cache-key computation in QueryCoach.
+func sha256Sum(s string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(s)))
+}
+
 // ── ValidateConfig (SEC-005) ──────────────────────────────────────────────────
 
 func TestValidateConfig_EmptyHost(t *testing.T) {
@@ -277,5 +284,136 @@ func TestValidateConfig_HostSetEmptyModel(t *testing.T) {
 	cc := NewCoachClient("http://ollama-lxc:11434", "", "")
 	if err := cc.ValidateConfig(); err == nil {
 		t.Fatal("empty model with non-empty host should be rejected")
+	}
+}
+
+// ── Cache bounds & pruning ────────────────────────────────────────────────────
+
+// TestCacheMaxSize verifies that the cache never exceeds cacheMaxSize entries:
+// filling it beyond capacity should evict old entries so len stays at cacheMaxSize.
+func TestCacheMaxSize(t *testing.T) {
+	cc := NewCoachClient("", "qwen2.5:3b", "")
+	cc.cacheMu.Lock()
+	// Seed the cache with cacheMaxSize entries, each with a future expiry.
+	for i := 0; i < cacheMaxSize; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		cc.cache[key] = cacheEntry{
+			response: CoachResponse{Available: true, Answer: "ok"},
+			expiry:   time.Now().Add(cacheTTL),
+		}
+	}
+	if got := len(cc.cache); got != cacheMaxSize {
+		cc.cacheMu.Unlock()
+		t.Fatalf("setup: cache size = %d, want %d", got, cacheMaxSize)
+	}
+	// pruneCacheLocked with no expired entries and cache at capacity should evict one.
+	cc.pruneCacheLocked()
+	if got := len(cc.cache); got >= cacheMaxSize {
+		cc.cacheMu.Unlock()
+		t.Fatalf("after prune at capacity: cache size = %d, want < %d", got, cacheMaxSize)
+	}
+	cc.cacheMu.Unlock()
+}
+
+// TestCachePrunesExpiredOnLookup verifies that a stale cache hit is deleted and
+// a fresh LLM call is made rather than returning the expired answer.
+func TestCachePrunesExpiredOnLookup(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chat" {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"model":       "qwen2.5:3b",
+				"message":     map[string]string{"role": "assistant", "content": "fresh answer"},
+				"done":        true,
+				"done_reason": "stop",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	cc := newTestCoachClient(t, srv.URL, "qwen2.5:3b")
+	payload := CoachPayload{Question: "expired?"}
+
+	// Manually plant an already-expired entry with the same cache key the real
+	// code would generate, then confirm QueryCoach makes a new LLM call.
+	userContent := formatContext(payload)
+	raw := fmt.Sprintf("%d\n%s\n%s", 1, userContent, payload.Question)
+	key := sha256Sum(raw)
+
+	cc.cacheMu.Lock()
+	cc.cache[key] = cacheEntry{
+		response: CoachResponse{Available: true, Answer: "stale"},
+		expiry:   time.Now().Add(-time.Minute), // already expired
+	}
+	cc.cacheMu.Unlock()
+
+	resp := cc.QueryCoach(1, payload)
+
+	if !resp.Available {
+		t.Fatal("expected Available=true from fresh LLM call")
+	}
+	if resp.Answer != "fresh answer" {
+		t.Errorf("Answer = %q, want %q", resp.Answer, "fresh answer")
+	}
+	if callCount != 1 {
+		t.Errorf("LLM called %d times, want 1 (expired entry should not be a cache hit)", callCount)
+	}
+
+	// The expired entry should have been removed during lookup.
+	cc.cacheMu.Lock()
+	_, stillPresent := cc.cache[key]
+	cc.cacheMu.Unlock()
+	// The fresh response replaces the old key, so the key is present again —
+	// but we can verify that the stale "stale" answer is gone.
+	if stillPresent {
+		cc.cacheMu.Lock()
+		entry := cc.cache[key]
+		cc.cacheMu.Unlock()
+		if entry.response.Answer == "stale" {
+			t.Error("stale cache entry was not replaced after expired lookup")
+		}
+	}
+}
+
+// TestCachePrunesExpiredOnInsert verifies that expired entries are swept during
+// a cache insert so they don't accumulate in memory over time.
+func TestCachePrunesExpiredOnInsert(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chat" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"model":       "qwen2.5:3b",
+				"message":     map[string]string{"role": "assistant", "content": "ok"},
+				"done":        true,
+				"done_reason": "stop",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	cc := newTestCoachClient(t, srv.URL, "qwen2.5:3b")
+
+	// Pre-populate the cache with expired entries.
+	cc.cacheMu.Lock()
+	for i := 0; i < 10; i++ {
+		cc.cache[fmt.Sprintf("old-%d", i)] = cacheEntry{
+			response: CoachResponse{},
+			expiry:   time.Now().Add(-time.Minute),
+		}
+	}
+	cc.cacheMu.Unlock()
+
+	// Trigger a real query — the insert path calls pruneCacheLocked.
+	cc.QueryCoach(1, CoachPayload{Question: "pruning?"})
+
+	cc.cacheMu.Lock()
+	size := len(cc.cache)
+	cc.cacheMu.Unlock()
+
+	// Only the one fresh entry should remain; all 10 expired entries should be gone.
+	if size != 1 {
+		t.Errorf("cache size after insert = %d, want 1 (expired entries should have been pruned)", size)
 	}
 }
