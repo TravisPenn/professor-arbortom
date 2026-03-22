@@ -577,7 +577,7 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 		}
 	}
 	if bestTM != nil {
-		rec := fmt.Sprintf("Teach TM%02d %s (%s-type, %d power) to %s — buy at a Poké Mart.",
+		rec := fmt.Sprintf("Teach TM%02d %s (%s-type, %d power) to %s.",
 			bestTM.tmNum, bestTM.moveName, bestTM.moveType, bestTM.power, bestTM.species)
 		if oppName != "" {
 			rec += fmt.Sprintf(" Useful against %s's %s-type team.", oppName, oppType)
