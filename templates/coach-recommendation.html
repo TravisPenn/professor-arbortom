@@ -1,5 +1,5 @@
 {{define "coach-recommendation.html"}}
-<section class="coach-answer">
+<section id="coach-rec-container" class="coach-answer">
   <h2>{{if .Question}}Professor's Answer{{else}}Professor's Recommendation{{end}}</h2>
   {{/* SEC-018: .Text is LLM output — formatCoach HTML-escapes first, then applies safe bold/br rendering. */}}
   <div class="answer-text">{{formatCoach .Text}}</div>
