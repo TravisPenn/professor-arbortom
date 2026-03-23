@@ -186,7 +186,7 @@ func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 		if progress.CurrentLocationID != nil {
 			db.QueryRow(`SELECT name FROM location WHERE id = ?`, *progress.CurrentLocationID).
 				Scan(&currentLocName) //nolint:errcheck
-			currentLocName = capitalizeVersion(currentLocName)
+			currentLocName = humanizeLocationName(currentLocName)
 		}
 
 		_, activeFlags, _ := loadFlags(db, run.ID, run.VersionID)

@@ -51,3 +51,24 @@ func TestScanInt(t *testing.T) {
 		}
 	})
 }
+
+func TestHumanizeLocationName(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"kanto-route-4", "Route 4"},
+		{"cerulean-city", "Cerulean City"},
+		{"hoenn-route-101", "Route 101"},
+		{"mt-moon", "Mt Moon"},
+		{"Pallet Town", "Pallet Town"},
+		{"Cerulean City", "Cerulean City"},
+		{"", ""},
+		{"kanto-safari-zone", "Safari Zone"},
+		{"pokemon-tower", "Pokemon Tower"},
+	}
+	for _, tt := range tests {
+		if got := humanizeLocationName(tt.in); got != tt.want {
+			t.Errorf("humanizeLocationName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

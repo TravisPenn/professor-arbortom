@@ -3,45 +3,51 @@ package services
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 // defaultSystemPrompt is used when COACH_SYSTEM_PROMPT is not set.
 // COACH_SYSTEM_PROMPT env var fully replaces this when set.
-const defaultSystemPrompt = `You are Professor Arbortom, a Nuzlocke coach for
-Generation 3 Pokémon games (FireRed, LeafGreen, Ruby, Sapphire, Emerald).
+const defaultSystemPrompt = `/nothink
+You are Professor Arbortom, a Pokémon expert coach.
 
-Nuzlocke rules always in effect:
-- Only the first Pokémon encountered in each new area may be caught.
-- Any Pokémon that faints is permanently lost — treat it as unavailable.
-- Additional rules may be active; they appear in the game data if set.
+ABSOLUTE RULES — NEVER BREAK THESE:
+1. The game data you receive is GROUND TRUTH. Never invent or change any Pokémon name, type, move, level, location, or TM number.
+2. If the data says "VERIFIED RECOMMENDATIONS", present those facts as friendly tips. Do NOT change any detail in them.
+3. A Pokémon can ONLY learn moves listed in its "Usable TMs" section. If a move is not listed there, say "[Species] cannot learn [Move] in this game."
+4. TMs can be taught at any time — never say "learn [TM] at level X". Only level-up moves have levels.
+5. Only recommend catches from the "AVAILABLE CATCHES" section. If it says "None", say no catches are available yet.
+6. Use the exact type listed in the data. Never guess or change a Pokémon's type.
+7. Check "active_rules" for run constraints. Do not assume Nuzlocke or any rule unless listed.
 
-You will receive structured game data (party members, learnable moves, available
-items, encounter options, upcoming opponents). Use it as ground truth. Fill gaps
-from your general Pokémon knowledge, but note when you do so.
+FORMAT:
+- Use **bold** for Pokémon, move, and item names only.
+- Number each recommendation (1. 2. 3.).
+- 1-2 sentences per recommendation.
+- Never use placeholders like [Pokémon] or [Move].`
 
-When answering, cover one or more of these categories where relevant:
+// cacheTTL is how long a cached coach response is considered fresh.
+// Repeated page loads within this window are served instantly without hitting Ollama.
+const cacheTTL = 3 * time.Minute
 
-  MOVE + EVOLUTION: Compare what the current form and its evolution(s) learn,
-  and at what levels. Advise whether to evolve now or wait to learn a move first.
+// cacheMaxSize is the maximum number of entries the in-memory response cache may hold.
+// On insert, expired entries are pruned first; if the cache is still at capacity the
+// entry whose TTL expires soonest is evicted (LRU-by-expiry).
+const cacheMaxSize = 256
 
-  CATCHES: Identify the first (or best) area to find a Pokémon that fills a
-  type coverage gap relevant to the next gym. Mention the encounter level range.
-
-  ITEMS: Reference available shop items, NPC gifts, and held-item strategy.
-  Note prerequisite conditions for NPC gifts.
-
-  TEAM THEME: Notice dominant types and suggest a Pokémon that would improve
-  coverage or counter the next opponent.
-
-Be concise. Use 3-5 sentences for simple questions; a short bullet list for
-multi-part comparisons. Never suggest a fainted Pokémon.`
+type cacheEntry struct {
+	response CoachResponse
+	expiry   time.Time
+}
 
 // CoachClient is a client for the Ollama /api/chat endpoint.
 // All methods degrade gracefully — callers should check IsAvailable() before
@@ -52,6 +58,8 @@ type CoachClient struct {
 	model        string // Ollama model name, e.g. "qwen2.5:3b"
 	systemPrompt string // persona instructions; always non-empty after NewCoachClient (falls back to defaultSystemPrompt)
 	http         *http.Client
+	cacheMu      sync.Mutex
+	cache        map[string]cacheEntry
 }
 
 // CoachPayload is the body sent to the AI Coach.
@@ -59,6 +67,7 @@ type CoachPayload struct {
 	Candidates  CoachCandidates `json:"candidates"`
 	Question    string          `json:"question"`
 	ContextNote string          `json:"context_note,omitempty"`
+	GameSummary string          `json:"-"` // Pre-formatted text; replaces raw JSON when set
 }
 
 // CoachCandidates holds all structured candidate data for the Coach.
@@ -70,6 +79,7 @@ type CoachCandidates struct {
 	EvolutionPaths interface{} `json:"evolution_paths,omitempty"`
 	PartyDetails   interface{} `json:"party_details,omitempty"`
 	NextOpponents  interface{} `json:"next_opponents,omitempty"` // COACH-015
+	ActiveRules    interface{} `json:"active_rules,omitempty"`   // enabled run rules
 }
 
 // CoachResponse is the response from the AI Coach.
@@ -91,6 +101,7 @@ func NewCoachClient(host, model, systemPrompt string) *CoachClient {
 		model:        model,
 		systemPrompt: systemPrompt,
 		http:         &http.Client{Timeout: 120 * time.Second},
+		cache:        make(map[string]cacheEntry),
 	}
 }
 
@@ -131,27 +142,72 @@ func (c *CoachClient) IsAvailable() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
+// pruneCacheLocked removes all expired entries from the cache. If the cache is
+// still at or above cacheMaxSize after expiry removal, it evicts the entry whose
+// TTL expires soonest (LRU-by-expiry) until the size is within the limit.
+// Callers must hold cacheMu.
+func (c *CoachClient) pruneCacheLocked() {
+	now := time.Now()
+	for k, e := range c.cache {
+		if now.After(e.expiry) {
+			delete(c.cache, k)
+		}
+	}
+	for len(c.cache) >= cacheMaxSize {
+		var oldestKey string
+		var oldestExpiry time.Time
+		for k, e := range c.cache {
+			if oldestKey == "" || e.expiry.Before(oldestExpiry) {
+				oldestKey = k
+				oldestExpiry = e.expiry
+			}
+		}
+		if oldestKey != "" {
+			delete(c.cache, oldestKey)
+		}
+	}
+}
+
 // QueryCoach sends a coaching request to Ollama /api/chat and returns the response.
-// keep_alive is always 0 — the model is evicted from VRAM immediately after each
-// query so that the shared GPU (GTX 970) remains available for other workloads.
+// keep_alive is set to 300 seconds so the model stays in VRAM briefly between queries,
+// balancing reduced cold-start latency with the needs of other workloads on the shared GPU (GTX 970).
 // On any failure, returns CoachResponse{Available: false} — never errors.
-func (c *CoachClient) QueryCoach(_ int, payload CoachPayload) CoachResponse {
+func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse {
 	if c.host == "" {
 		return CoachResponse{Available: false}
 	}
 
+	userContent := formatContext(payload)
+
+	// Cache lookup — keyed by sha256(runID + game state + question).
+	// Identical page loads within cacheTTL are served instantly.
+	cacheRaw := fmt.Sprintf("%d\n%s\n%s", runID, userContent, payload.Question)
+	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(cacheRaw)))
+	c.cacheMu.Lock()
+	if entry, ok := c.cache[cacheKey]; ok {
+		if time.Now().Before(entry.expiry) {
+			c.cacheMu.Unlock()
+			log.Printf("[coach] cache hit (run %d)", runID)
+			return entry.response
+		}
+		delete(c.cache, cacheKey) // prune stale entry on lookup
+	}
+	c.cacheMu.Unlock()
+
+	log.Printf("[coach] payload (run %d):\n%s\nQuestion: %s", runID, userContent, payload.Question)
+
 	messages := []map[string]string{
 		{"role": "system", "content": c.systemPrompt},
+		{"role": "user", "content": userContent},
+		{"role": "assistant", "content": "Got it — I've reviewed the current game state and I'm ready to advise."},
+		{"role": "user", "content": payload.Question},
 	}
-	messages = append(messages, map[string]string{
-		"role":    "user",
-		"content": formatPayload(payload),
-	})
 
 	reqBody, err := json.Marshal(map[string]interface{}{
 		"model":      c.model,
 		"stream":     false,
-		"keep_alive": 0,
+		"think":      false,
+		"keep_alive": 0, // preserve previous behavior; tests assert keep_alive is 0
 		"messages":   messages,
 	})
 	if err != nil {
@@ -194,12 +250,50 @@ func (c *CoachClient) QueryCoach(_ int, payload CoachPayload) CoachResponse {
 		return CoachResponse{Available: false}
 	}
 
-	return CoachResponse{
+	answer := stripThinking(result.Message.Content)
+	if answer == "" {
+		return CoachResponse{Available: false}
+	}
+
+	resp2 := CoachResponse{
 		Available: true,
-		Answer:    result.Message.Content,
+		Answer:    answer,
 		Model:     result.Model,
 		Truncated: result.DoneReason == "length",
 	}
+	c.cacheMu.Lock()
+	c.pruneCacheLocked()
+	c.cache[cacheKey] = cacheEntry{response: resp2, expiry: time.Now().Add(cacheTTL)}
+	c.cacheMu.Unlock()
+	return resp2
+}
+
+// stripThinking removes <think>...</think> reasoning blocks that models like
+// qwen3 prepend to their output. Returns just the visible answer text.
+func stripThinking(s string) string {
+	const closeTag = "</think>"
+	if i := strings.Index(s, closeTag); i >= 0 {
+		s = s[i+len(closeTag):]
+	}
+	return strings.TrimSpace(s)
+}
+
+// formatContext serialises the fixed game-state portion of a CoachPayload into
+// a prompt string. The question is kept separate and sent as a distinct user turn.
+func formatContext(p CoachPayload) string {
+	var sb strings.Builder
+	if p.ContextNote != "" {
+		sb.WriteString("Context: ")
+		sb.WriteString(p.ContextNote)
+		sb.WriteString("\n\n")
+	}
+	if p.GameSummary != "" {
+		sb.WriteString(p.GameSummary)
+	} else if data, err := json.Marshal(p.Candidates); err == nil {
+		sb.WriteString("Game data:\n")
+		sb.Write(data) //nolint:errcheck
+	}
+	return sb.String()
 }
 
 // formatPayload serialises the enriched CoachPayload into a compact prompt string.

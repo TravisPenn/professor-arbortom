@@ -9,6 +9,7 @@
   <h1>Your Runs</h1>
 
   {{if .Runs}}
+  <div class="table-scroll">
   <table class="run-table">
     <thead>
       <tr>
@@ -43,6 +44,7 @@
       {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}
   <p class="empty-state">No active runs. Start one below.</p>
   {{end}}
@@ -50,6 +52,7 @@
   {{if .ArchivedRuns}}
   <details class="archived-runs">
     <summary>Archived runs ({{len .ArchivedRuns}})</summary>
+    <div class="table-scroll">
     <table class="run-table run-table-archived">
       <thead>
         <tr>
@@ -78,6 +81,7 @@
         {{end}}
       </tbody>
     </table>
+    </div>
   </details>
   {{end}}
 

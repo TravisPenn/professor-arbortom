@@ -337,25 +337,21 @@ main {
 .rule-toggle input { margin-right: 0.3rem; }
 .rule-desc { color: #555; margin: 0.3rem 0 0; font-size: 0.9rem; }
 
-/* ── Coach Panel ──────────────────────────────────────────────────────────── */
+/* ── Coach Page ────────────────────────────────────────────────────────────── */
 
-.coach-layout {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 1.5rem;
-  align-items: start;
+/* Single-column layout — recommendation first, data below, party moves last */
+main > section, main > .coach-answer, main > .coach-insights,
+main > .coach-section, main > .coach-ask, main > .coach-unavailable {
+  margin-bottom: 1rem;
 }
 
-@media (max-width: 900px) {
-  .coach-layout { grid-template-columns: 1fr; }
-}
-
-.coach-candidates section { margin-bottom: 1.5rem; }
 .candidate-table { font-size: 0.88rem; }
 
-.coach-panel {
-  position: sticky;
-  top: 1rem;
+/* Horizontal scroll wrapper for wide tables on small screens */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 0.25rem;
 }
 
 .coach-ask, .coach-answer {
@@ -366,10 +362,28 @@ main {
   margin-bottom: 1rem;
 }
 
+.coach-ask textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+/* iOS zoom prevention and coach mobile handled in consolidated @media blocks below */
+
 .answer-text {
   white-space: pre-wrap;
   font-size: 0.92rem;
   line-height: 1.6;
+}
+
+.coach-loading-container {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
 }
 
 .coach-unavailable {
@@ -436,6 +450,55 @@ main {
 .evo-legal::before  { content: "✓ "; color: #16a34a; font-weight: 700; }
 .evo-blocked::before { content: "✗ "; color: #dc2626; font-weight: 700; }
 
+/* ── Walkthrough Guide ───────────────────────────────────────────────────── */
+
+.walkthrough-guide {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.walkthrough-guide h2 { margin-top: 0; font-size: 1rem; color: #92400e; }
+.walkthrough-guide summary { cursor: pointer; font-weight: 600; color: #92400e; }
+.walkthrough-text {
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #451a03;
+  margin-top: 0.5rem;
+}
+
+/* ── Party Moves (expandable slots) ──────────────────────────────────────── */
+
+.party-slot-details {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: #fff;
+}
+
+.party-slot-details > summary {
+  cursor: pointer;
+  padding: 0.6rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  list-style: revert;
+  user-select: none;
+}
+
+.party-slot-details > summary:hover {
+  background: #f9fafb;
+}
+
+.party-slot-details[open] > summary {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.party-slot-details > .table-scroll,
+.party-slot-details > p {
+  padding: 0.5rem 0.75rem;
+}
 
 
 /* ── Progress ─────────────────────────────────────────────────────────────── */
@@ -448,6 +511,195 @@ main {
   align-items: flex-start;
   gap: 0.5rem;
   cursor: pointer;
+}
+
+/* ── Move Chips ───────────────────────────────────────────────────────────── */
+
+.move-chip {
+  display: inline-block;
+  background: #e5e7eb;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.8em;
+  margin: 1px 2px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* ── Responsive / Mobile ──────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/* -- Touch-friendly tap targets everywhere -------------------------------- */
+.btn, .btn-sm, .flag-label, .nav-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Make summary elements touch-friendly while preserving disclosure marker */
+summary {
+  display: list-item;
+  min-height: 44px;
+  padding: 0.4rem 0;
+}
+
+/* ── Tablet breakpoint (≤ 768px) ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  body { font-size: 14px; }
+
+  main { padding: 0 0.75rem; }
+
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; }
+
+  /* Nav: allow wrapping and bigger tap areas */
+  .site-nav {
+    padding: 0.4rem 0.75rem;
+    gap: 0.25rem 0.5rem;
+  }
+  .site-nav a {
+    padding: 0.35rem 0.25rem;
+    font-size: 0.85rem;
+  }
+
+  /* Run banner: stack on tablet */
+  .run-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  /* Overview grid: 2 columns on tablet */
+  .overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.75rem;
+  }
+  .overview-card { padding: 0.75rem; }
+
+  /* Team grid: single column sooner */
+  .team-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+  }
+
+  /* Tables: tighter cells */
+  th, td { padding: 0.3rem 0.5rem; font-size: 0.88rem; }
+
+  /* Forms: full-width inputs */
+  .form-row input[type="text"],
+  .form-row input[type="number"],
+  .form-row select,
+  .form-row textarea {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .new-run-form, .log-form { max-width: 100%; }
+
+  /* Rule cards full width */
+  .rule-cards { max-width: 100%; }
+}
+
+/* ── Phone breakpoint (≤ 480px) ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+  body { font-size: 13px; }
+
+  main { padding: 0 0.5rem; margin: 0.5rem auto; }
+
+  h1 { font-size: 1.25rem; margin: 0.3rem 0 0.6rem; }
+
+  /* Nav: compact, hide separators, wrap into rows */
+  .site-nav {
+    padding: 0.35rem 0.5rem;
+    gap: 0.15rem 0.4rem;
+    font-size: 0.82rem;
+  }
+  .nav-sep { display: none; }
+  .nav-run-name {
+    width: 100%;
+    font-size: 0.85rem;
+    padding-bottom: 0.15rem;
+    border-bottom: 1px solid #334155;
+    margin-bottom: 0.1rem;
+  }
+  .site-nav a { padding: 0.3rem 0.15rem; }
+
+  /* Run banner: even tighter */
+  .run-banner {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+    gap: 0.15rem;
+  }
+
+  /* Overview: single column */
+  .overview-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .overview-card { padding: 0.6rem; }
+  .overview-card-header h2 { font-size: 0.9rem; }
+
+  /* Team grid: single column */
+  .team-grid { grid-template-columns: 1fr; }
+
+  /* Tables: smaller padding, let .table-scroll handle overflow */
+  th, td { padding: 0.25rem 0.35rem; font-size: 0.82rem; }
+  th { font-size: 0.8rem; }
+
+  /* Candidate table in coach: denser */
+  .candidate-table { font-size: 0.8rem; }
+
+  /* Buttons: full-width primary actions on phone */
+  .btn-primary, .btn-warning, .btn-danger {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 0.55rem 0.75rem;
+  }
+
+  /* Keep small inline buttons compact */
+  .btn-sm {
+    display: inline-flex;
+    width: auto;
+    padding: 0.2rem 0.5rem;
+  }
+  .run-actions { flex-wrap: wrap; gap: 0.25rem; }
+  .run-actions .btn-sm { min-height: 36px; }
+
+  /* Coach sections tighter */
+  .coach-ask, .coach-answer, .coach-insights, .coach-section {
+    padding: 0.6rem;
+    border-radius: 4px;
+  }
+  .coach-ask textarea { font-size: 1rem; /* prevent iOS zoom */ }
+
+  /* Smaller insights on phone */
+  .insight-label { min-width: 60px; font-size: 0.7rem; }
+  .insight-member { font-size: 0.82rem; }
+
+  /* Party slot details */
+  .party-slot-details > summary { padding: 0.5rem 0.6rem; font-size: 0.9rem; }
+  .party-slot-details > .table-scroll,
+  .party-slot-details > p { padding: 0.35rem 0.5rem; }
+
+  /* Flag grid: full width */
+  .flag-grid { max-width: 100%; }
+  .flag-label { gap: 0.35rem; font-size: 0.88rem; }
+
+  /* Flash messages */
+  .flash { margin: 0.3rem 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.88rem; }
+
+  /* Starter picker */
+  .starter-picker { gap: 0.5rem; }
+
+  /* Box filter link */
+  .box-filter { font-size: 0.88rem; }
+
+  /* Move chips denser */
+  .move-chip { font-size: 0.72em; padding: 1px 4px; }
+  .team-move-list { max-width: 140px; }
 }
 
 .flag-label input { margin-top: 3px; flex-shrink: 0; }

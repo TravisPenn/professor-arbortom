@@ -4,13 +4,33 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 
+	"github.com/TravisPenn/professor-arbortom/data/walkthroughs"
 	"github.com/TravisPenn/professor-arbortom/internal/legality"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
 	"github.com/TravisPenn/professor-arbortom/internal/pokeapi"
 	"github.com/TravisPenn/professor-arbortom/internal/services"
 	"github.com/gin-gonic/gin"
 )
+
+// defaultRecommendationPrompt is sent to the LLM on every page load when no
+// user question is present, producing an automatic recommendation.
+const defaultRecommendationPrompt = "Present the VERIFIED RECOMMENDATIONS above as a helpful coach response. " +
+	"Rewrite each fact as a friendly 1-2 sentence tip. Do NOT add, change, or invent any names, types, levels, " +
+	"locations, or moves beyond what the verified recommendations state. " +
+	"If a recommendation says a Pokémon is a certain type, use exactly that type. " +
+	"Use **bold** for Pokémon, move, and item names. Number each tip."
+
+// wrapUserQuestion wraps an open-ended player question with grounding instructions
+// so the model answers strictly from the provided game state rather than hallucinating.
+func wrapUserQuestion(q string) string {
+	return "Answer this question using ONLY the game data provided above. " +
+		"If the answer is not in the data, say you don't have that information. " +
+		"Do NOT use outside knowledge about TM numbers, move names, locations, or types — " +
+		"only reference what appears in the game state context.\n\nPlayer question: " + q
+}
 
 // ShowCoach renders GET /runs/:run_id/coach
 func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
@@ -22,6 +42,54 @@ func ShowCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient)
 			return
 		}
 		c.HTML(http.StatusOK, "coach.html", page)
+	}
+}
+
+// GetRecommendation handles GET /runs/:run_id/coach/recommendation
+// It is called asynchronously by the page after initial load.
+// Optional ?q= param allows submitting a user question via the same endpoint.
+func GetRecommendation(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		run := c.MustGet("run").(models.Run)
+		if !zc.IsAvailable() {
+			c.String(http.StatusServiceUnavailable, "")
+			return
+		}
+
+		question := c.Query("q")
+		// SEC-009: Limit question length to prevent token abuse on LLM gateway.
+		if len(question) > 2000 {
+			c.String(http.StatusBadRequest, "Question must be 2000 characters or fewer")
+			return
+		}
+
+		page, err := buildCoachPage(c, db, pokeClient, run.ID, true)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "")
+			return
+		}
+
+		prompt := defaultRecommendationPrompt
+		if question != "" {
+			prompt = wrapUserQuestion(question)
+		}
+
+		payload, err := buildCoachPayload(db, run.ID, page, prompt)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "")
+			return
+		}
+		response := zc.QueryCoach(run.ID, payload)
+		if !response.Available {
+			c.String(http.StatusServiceUnavailable, "")
+			return
+		}
+		c.HTML(http.StatusOK, "coach-recommendation.html", CoachAnswer{
+			Text:      response.Answer,
+			Model:     response.Model,
+			Truncated: response.Truncated,
+			Question:  question,
+		})
 	}
 }
 
@@ -50,7 +118,7 @@ func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient
 			return
 		}
 
-		payload, err := buildCoachPayload(db, run.ID, page, question)
+		payload, err := buildCoachPayload(db, run.ID, page, wrapUserQuestion(question))
 		if err != nil {
 			respondError(c, err)
 			return
@@ -65,7 +133,7 @@ func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient
 				Truncated: response.Truncated,
 			}
 		} else {
-			page.CoachAvailable = false
+			page.CoachError = "The Professor could not be reached right now. Please try again."
 		}
 
 		c.HTML(http.StatusOK, "coach.html", page)
@@ -193,9 +261,14 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 	insights, _ := buildTeamInsights(db, runID)
 	opponents, _ := nextOpponents(db, runID)
 
+	// Humanize location names from legality engine (DB slugs → display names).
+	for i := range acqs {
+		acqs[i].LocationName = humanizeLocationName(acqs[i].LocationName)
+	}
+
 	return CoachPage{
 		BasePage: BasePage{
-			PageTitle:  "Coach",
+			PageTitle:  "Professor Arbortom",
 			ActiveNav:  "coach",
 			RunContext: buildRunContext(c),
 		},
@@ -377,11 +450,36 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 	var versionName string
 	db.QueryRow(`SELECT gv.name FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&versionName) //nolint:errcheck
 
-	contextNote := fmt.Sprintf(
-		"Run data is %s. Team/type analysis is computed from verified DB data. "+
-			"For general Pokemon knowledge (breeding, cross-gen), use your training knowledge.",
-		capitalizeVersion(versionName),
-	)
+	var badgeCount int
+	db.QueryRow(`SELECT COALESCE(badge_count, 0) FROM run WHERE id = ?`, runID).Scan(&badgeCount) //nolint:errcheck
+
+	var currentLocationName string
+	db.QueryRow(
+		`SELECT COALESCE(l.name, '') FROM run r LEFT JOIN location l ON l.id = r.current_location_id WHERE r.id = ?`,
+		runID,
+	).Scan(&currentLocationName) //nolint:errcheck
+	currentLocationName = humanizeLocationName(currentLocationName)
+
+	var maxPartyLevel int
+	for _, pm := range page.PartyMoves {
+		if pm.Level > maxPartyLevel {
+			maxPartyLevel = pm.Level
+		}
+	}
+
+	contextNote := "Only suggest content accessible at the player's current badge count and party level. " +
+		"Team/type analysis is computed from verified DB data. " +
+		"For general Pokemon knowledge (breeding, cross-gen), use your training knowledge."
+
+	// Load active rules so the LLM knows which constraints apply.
+	var activeRules map[string]interface{}
+	if rs, rsErr := legality.LoadRunState(db, runID); rsErr == nil && len(rs.ActiveRules) > 0 {
+		activeRules = make(map[string]interface{}, len(rs.ActiveRules))
+		for k := range rs.ActiveRules {
+			params := rs.RuleParams[k] // nil if no extra params
+			activeRules[k] = params
+		}
+	}
 
 	var partyDetails []PartyDetailPayload
 	var teamAnalysis *TeamAnalysisPayload
@@ -409,10 +507,609 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 			EvolutionPaths: evolutionPaths,
 			PartyDetails:   partyDetails,
 			NextOpponents:  page.NextOpponents,
+			ActiveRules:    activeRules,
 		},
 		Question:    question,
 		ContextNote: contextNote,
+		GameSummary: buildGameSummary(page, activeRules, versionName, badgeCount, maxPartyLevel, currentLocationName) +
+			buildWalkthroughContext(versionName, badgeCount, currentLocationName, activeRules) +
+			buildPreComputedRecommendations(page, versionName, badgeCount, currentLocationName, activeRules),
 	}, nil
+}
+
+// buildPreComputedRecommendations generates server-side verified recommendations
+// from the structured game data. These are facts the LLM merely needs to present
+// — it cannot hallucinate names, types, or levels because they're computed here.
+func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
+	var recs []string
+
+	// Determine next opponent info for type-relevance scoring
+	var oppName, oppType string
+	if len(page.NextOpponents) > 0 {
+		opp := page.NextOpponents[0]
+		oppName = opp.Name
+		oppType = opp.TypeSpecialty
+	}
+
+	// 1. Best TM upgrade: find the single best TM a party member can learn
+	//    that's super-effective or at least strong against the next opponent
+	type tmCandidate struct {
+		species  string
+		tmNum    int
+		moveName string
+		moveType string
+		power    int
+	}
+	var bestTM *tmCandidate
+	for _, pm := range page.PartyMoves {
+		currentBestByType := map[string]int{}
+		if page.TeamInsights != nil {
+			for _, m := range page.TeamInsights.Members {
+				if capitalizeVersion(pm.SpeciesName) == m.SpeciesName {
+					for _, mv := range m.CurrentMoves {
+						if mv.Power != nil && *mv.Power > currentBestByType[mv.TypeName] {
+							currentBestByType[mv.TypeName] = *mv.Power
+						}
+					}
+					break
+				}
+			}
+		}
+		for _, mv := range pm.Moves {
+			if mv.LearnMethod != "machine" || mv.TMNumber == 0 || mv.Power == nil || *mv.Power < 50 {
+				continue
+			}
+			if currentBest, ok := currentBestByType[mv.TypeName]; ok && currentBest >= *mv.Power {
+				continue
+			}
+			if bestTM == nil || *mv.Power > bestTM.power {
+				bestTM = &tmCandidate{
+					species:  capitalizeVersion(pm.SpeciesName),
+					tmNum:    mv.TMNumber,
+					moveName: mv.Name,
+					moveType: mv.TypeName,
+					power:    *mv.Power,
+				}
+			}
+		}
+	}
+	if bestTM != nil {
+		rec := fmt.Sprintf("Teach TM%02d %s (%s-type, %d power) to %s.",
+			bestTM.tmNum, bestTM.moveName, bestTM.moveType, bestTM.power, bestTM.species)
+		// Annotate where to get the TM only when confirmed via page.LegalItems,
+		// to avoid stating incorrect availability (e.g. "buy at a Poké Mart"
+		// when the TM is not actually in any shop).
+		for _, item := range page.LegalItems {
+			lower := strings.ToLower(item.Name)
+			if !strings.HasPrefix(lower, "tm") {
+				continue
+			}
+			var tmn int
+			if _, err := fmt.Sscanf(lower, "tm%d", &tmn); err != nil {
+				continue
+			}
+			if tmn != bestTM.tmNum {
+				continue
+			}
+			switch item.Source {
+			case "owned":
+				rec += " (already in your bag)"
+			case "shop":
+				rec += " (buy at the Poké Mart)"
+			case "obtainable":
+				rec += " (pick up nearby)"
+			default:
+				// Unknown source — omit availability annotation.
+			}
+			break
+		}
+		if oppName != "" {
+			rec += fmt.Sprintf(" Useful against %s's %s-type team.", oppName, oppType)
+		}
+		recs = append(recs, rec)
+	}
+
+	// 2. Best catch: find a catch that covers a team weakness
+	weakTypes := map[string]bool{}
+	if page.TeamInsights != nil {
+		for _, w := range page.TeamInsights.Weaknesses {
+			weakTypes[w.Type] = true
+		}
+	}
+	type catchCandidate struct {
+		species  string
+		location string
+		method   string
+		minLv    int
+		maxLv    int
+	}
+	var bestCatch *catchCandidate
+	for _, a := range page.Acquisitions {
+		if a.BlockedByRule != nil {
+			continue
+		}
+		bestCatch = &catchCandidate{
+			species:  capitalizeVersion(a.SpeciesName),
+			location: a.LocationName,
+			method:   humanizeMethod(a.Method),
+			minLv:    a.MinLevel,
+			maxLv:    a.MaxLevel,
+		}
+		break // take first available (they're already sorted by relevance)
+	}
+	if bestCatch != nil {
+		lvl := fmt.Sprintf("Lv%d", bestCatch.minLv)
+		if bestCatch.maxLv != bestCatch.minLv {
+			lvl = fmt.Sprintf("Lv%d-%d", bestCatch.minLv, bestCatch.maxLv)
+		}
+		rec := fmt.Sprintf("Catch %s at %s (%s, %s).",
+			bestCatch.species, bestCatch.location, lvl, bestCatch.method)
+		recs = append(recs, rec)
+	}
+
+	// 3. Best trade option
+	if len(page.Trades) > 0 {
+		t := page.Trades[0]
+		if t.GiveSpecies != "" {
+			recs = append(recs, fmt.Sprintf("Trade %s to receive %s.",
+				capitalizeVersion(t.GiveSpecies), capitalizeVersion(t.ReceiveSpecies)))
+		} else if t.PriceCoins > 0 {
+			recs = append(recs, fmt.Sprintf("Buy %s at the Game Corner for %d coins.",
+				capitalizeVersion(t.ReceiveSpecies), t.PriceCoins))
+		} else {
+			recs = append(recs, fmt.Sprintf("Obtain %s via %s.",
+				capitalizeVersion(t.ReceiveSpecies), t.Method))
+		}
+	}
+
+	// 4. Evolution advice: if a party member is close to evolving
+	if page.TeamInsights != nil {
+		for _, es := range page.TeamInsights.EvoSummaries {
+			for _, path := range es.Paths {
+				if len(path.Steps) == 0 || !path.FullyLegal {
+					continue
+				}
+				step := path.Steps[0]
+				cond := formatEvoCondition(step)
+				// Find current level of this pokemon
+				for _, pm := range page.PartyMoves {
+					if capitalizeVersion(pm.SpeciesName) == es.SpeciesName {
+						// Check if there's a strong move to learn before evolving
+						var learnFirst string
+						if minLvl, ok := step.Conditions["min_level"]; ok {
+							evoLvl := 0
+							switch v := minLvl.(type) {
+							case float64:
+								evoLvl = int(v)
+							case int:
+								evoLvl = v
+							}
+							for _, mv := range pm.Moves {
+								if mv.LearnMethod == "level-up" && mv.Level > pm.Level && mv.Level < evoLvl && mv.Power != nil && *mv.Power >= 60 {
+									learnFirst = fmt.Sprintf(" Consider waiting until Lv%d to learn %s (%s, %d power) first.",
+										mv.Level, mv.Name, mv.TypeName, *mv.Power)
+									break
+								}
+							}
+						}
+						rec := fmt.Sprintf("%s evolves to %s %s.",
+							es.SpeciesName, capitalizeVersion(step.ToSpeciesName), cond)
+						if learnFirst != "" {
+							rec += learnFirst
+						}
+						recs = append(recs, rec)
+						break
+					}
+				}
+				break // only first path per pokemon
+			}
+		}
+	}
+
+	// 5. Walkthrough items at current location — surface TMs/items the player
+	//    can pick up right now, extracted from the embedded walkthrough guide.
+	//    For TMs, annotate which party member can learn it.
+	//    Check both current and next badge sections since players are between gyms.
+	//    Skipped when the no_item_locations rule is active.
+	_, noItems := activeRules["no_item_locations"]
+	if currentLocation != "" && !noItems {
+		// Build map of TM move name → species that can learn it.
+		tmLearners := map[string]string{} // lowercase move name → species
+		for _, pm := range page.PartyMoves {
+			for _, mv := range pm.Moves {
+				if mv.TMNumber > 0 {
+					tmLearners[strings.ToLower(mv.Name)] = pm.SpeciesName
+				}
+			}
+		}
+
+		hint := walkthroughs.NormalizeLocation(currentLocation)
+		for _, bc := range []int{badgeCount, badgeCount + 1} {
+			section := walkthroughs.Lookup(versionName, bc)
+			if section == "" {
+				continue
+			}
+			items := walkthroughs.SubSection(section, "Items & TMs")
+			if items == "" {
+				continue
+			}
+			headerSkipped := 0
+			for _, line := range strings.Split(items, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if !strings.Contains(trimmed, "|") {
+					continue
+				}
+				if headerSkipped < 2 {
+					headerSkipped++
+					continue
+				}
+				cols := strings.Split(trimmed, "|")
+				if len(cols) < 3 {
+					continue
+				}
+				loc := strings.TrimSpace(cols[1])
+				itemDesc := strings.TrimSpace(cols[2])
+				if loc == "" || itemDesc == "" || itemDesc == "—" {
+					continue
+				}
+				normLoc := walkthroughs.NormalizeLocation(loc)
+				if !strings.Contains(normLoc, hint) && !strings.Contains(hint, normLoc) {
+					continue
+				}
+				rec := fmt.Sprintf("Pick up %s at %s.", itemDesc, loc)
+				// For TMs, annotate which party member can learn it.
+				if strings.HasPrefix(itemDesc, "TM") {
+					tmParts := strings.SplitN(itemDesc, " ", 3) // ["TM05", "Roar", ...]
+					if len(tmParts) >= 2 {
+						moveName := strings.ToLower(tmParts[1])
+						if species, ok := tmLearners[moveName]; ok {
+							rec = fmt.Sprintf("Pick up %s at %s — %s can learn it.", itemDesc, loc, capitalizeVersion(species))
+						}
+					}
+				}
+				recs = append(recs, rec)
+			}
+		}
+	}
+
+	if len(recs) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nVERIFIED RECOMMENDATIONS (these are facts computed from the game database — present them as-is, do not modify names/types/levels):\n")
+	for i, r := range recs {
+		fmt.Fprintf(&sb, "%d. %s\n", i+1, r)
+	}
+	return sb.String()
+}
+
+// buildGameSummary produces a concise human-readable summary of the game state
+// for the LLM. Raw JSON overwhelms small models (qwen2.5:3b); this cuts the
+// context from ~3000 tokens to ~300 tokens of natural language.
+func buildGameSummary(page CoachPage, activeRules map[string]interface{}, versionName string, badgeCount, maxPartyLevel int, currentLocation string) string {
+	var sb strings.Builder
+
+	// Foundational data — game, progression, party size
+	fmt.Fprintf(&sb, "GAME: Pokemon %s\n", capitalizeVersion(versionName))
+	fmt.Fprintf(&sb, "BADGES: %d\n", badgeCount)
+	fmt.Fprintf(&sb, "HIGHEST PARTY LEVEL: %d\n", maxPartyLevel)
+	fmt.Fprintf(&sb, "PARTY SIZE: %d/6\n", len(page.PartyMoves))
+	if currentLocation != "" {
+		fmt.Fprintf(&sb, "CURRENT LOCATION: %s\n", capitalizeVersion(currentLocation))
+	} else {
+		sb.WriteString("CURRENT LOCATION: Not set\n")
+	}
+
+	// Active rules
+	if len(activeRules) > 0 {
+		sb.WriteString("ACTIVE RULES: ")
+		first := true
+		keys := make([]string, 0, len(activeRules))
+		for k := range activeRules {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if !first {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(k)
+			first = false
+		}
+		sb.WriteString("\n\n")
+	}
+
+	// Party with current moves
+	sb.WriteString("PARTY:\n")
+	if page.TeamInsights != nil {
+		for _, m := range page.TeamInsights.Members {
+			fmt.Fprintf(&sb, "- %s Lv%d (%s)", m.SpeciesName, m.Level, strings.Join(m.Types, "/"))
+			if m.Ability != "" {
+				fmt.Fprintf(&sb, " [%s]", m.Ability)
+			}
+			sb.WriteString("\n")
+			if len(m.CurrentMoves) > 0 {
+				sb.WriteString("  Knows: ")
+				for i, mv := range m.CurrentMoves {
+					if i > 0 {
+						sb.WriteString(", ")
+					}
+					if mv.Power != nil && *mv.Power > 0 {
+						fmt.Fprintf(&sb, "%s (%s %dpwr)", mv.Name, mv.TypeName, *mv.Power)
+					} else {
+						fmt.Fprintf(&sb, "%s (%s)", mv.Name, mv.TypeName)
+					}
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	// Upcoming level-up moves (within next 20 levels)
+	for _, pm := range page.PartyMoves {
+		var upcoming []string
+		for _, mv := range pm.Moves {
+			if mv.LearnMethod == "level-up" && mv.Level > pm.Level && mv.Level <= pm.Level+20 {
+				entry := fmt.Sprintf("Lv%d %s (%s", mv.Level, mv.Name, mv.TypeName)
+				if mv.Power != nil && *mv.Power > 0 {
+					entry += fmt.Sprintf(" %dpwr", *mv.Power)
+				}
+				entry += ")"
+				upcoming = append(upcoming, entry)
+			}
+		}
+		if len(upcoming) > 0 {
+			fmt.Fprintf(&sb, "\n%s upcoming moves:\n", capitalizeVersion(pm.SpeciesName))
+			for _, u := range upcoming {
+				fmt.Fprintf(&sb, "  %s\n", u)
+			}
+		}
+
+		// Strong learnable TMs/HMs (power >= 50)
+		var tms []string
+		for _, mv := range pm.Moves {
+			if mv.LearnMethod != "machine" || mv.Power == nil || *mv.Power < 50 {
+				continue
+			}
+			label := mv.Name
+			if mv.TMNumber > 0 {
+				label = fmt.Sprintf("TM%02d %s", mv.TMNumber, mv.Name)
+			} else if mv.HMNumber > 0 {
+				label = fmt.Sprintf("HM%02d %s", mv.HMNumber, mv.Name)
+			}
+			tms = append(tms, fmt.Sprintf("%s (%s %dpwr)", label, mv.TypeName, *mv.Power))
+		}
+		if len(tms) > 0 {
+			fmt.Fprintf(&sb, "  Usable TMs: %s\n", strings.Join(tms, ", "))
+		}
+	}
+
+	// Evolution paths
+	if page.TeamInsights != nil && len(page.TeamInsights.EvoSummaries) > 0 {
+		sb.WriteString("\nEVOLUTION:\n")
+		for _, es := range page.TeamInsights.EvoSummaries {
+			for _, path := range es.Paths {
+				chain := es.SpeciesName
+				for _, step := range path.Steps {
+					cond := formatEvoCondition(step)
+					chain += fmt.Sprintf(" -> %s %s", capitalizeVersion(step.ToSpeciesName), cond)
+				}
+				fmt.Fprintf(&sb, "- %s\n", chain)
+			}
+		}
+	}
+
+	// Team weaknesses/resistances
+	if page.TeamInsights != nil {
+		if len(page.TeamInsights.Weaknesses) > 0 {
+			types := make([]string, 0, len(page.TeamInsights.Weaknesses))
+			for _, w := range page.TeamInsights.Weaknesses {
+				types = append(types, w.Type)
+			}
+			fmt.Fprintf(&sb, "\nTEAM WEAK TO: %s\n", strings.Join(types, ", "))
+		}
+		if len(page.TeamInsights.Resistances) > 0 {
+			fmt.Fprintf(&sb, "TEAM RESISTS: %s\n", strings.Join(page.TeamInsights.Resistances, ", "))
+		}
+	}
+
+	// Next opponents
+	if len(page.NextOpponents) > 0 {
+		sb.WriteString("\nNEXT OPPONENTS:\n")
+		for _, opp := range page.NextOpponents {
+			fmt.Fprintf(&sb, "- %s (%s-type, %s, Badge #%d)\n",
+				opp.Name, capitalizeVersion(opp.TypeSpecialty), opp.LocationName, opp.BadgeOrder)
+			for _, p := range opp.Team {
+				fmt.Fprintf(&sb, "  %s Lv%d (%s)", capitalizeVersion(p.SpeciesName), p.Level, strings.Join(p.Types, "/"))
+				if len(p.Moves) > 0 {
+					fmt.Fprintf(&sb, " — %s", strings.Join(p.Moves, ", "))
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	// Catches
+	if len(page.Acquisitions) > 0 {
+		sb.WriteString("\nAVAILABLE CATCHES:\n")
+		for _, a := range page.Acquisitions {
+			method := humanizeMethod(a.Method)
+			entry := fmt.Sprintf("- %s at %s", capitalizeVersion(a.SpeciesName), a.LocationName)
+			if a.MinLevel == a.MaxLevel {
+				entry += fmt.Sprintf(" (Lv%d, %s)", a.MinLevel, method)
+			} else {
+				entry += fmt.Sprintf(" (Lv%d-%d, %s)", a.MinLevel, a.MaxLevel, method)
+			}
+			if a.BlockedByRule != nil {
+				entry += fmt.Sprintf(" [BLOCKED: %s]", *a.BlockedByRule)
+			}
+			sb.WriteString(entry + "\n")
+		}
+	} else {
+		sb.WriteString("\nAVAILABLE CATCHES: None at current progress.\n")
+	}
+
+	// Trades
+	if len(page.Trades) > 0 {
+		sb.WriteString("\nAVAILABLE TRADES:\n")
+		for _, t := range page.Trades {
+			fmt.Fprintf(&sb, "- Give %s -> Receive %s", capitalizeVersion(t.GiveSpecies), capitalizeVersion(t.ReceiveSpecies))
+			if t.Notes != "" {
+				fmt.Fprintf(&sb, " (%s)", t.Notes)
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	// Targeted TM recommendations: only show shop TMs that a party member can
+	// learn AND that are stronger than their current move of the same type.
+	shopTMSet := make(map[int]string) // TMNumber -> display name
+	for _, item := range page.LegalItems {
+		if strings.HasPrefix(item.Name, "tm") {
+			// Parse TM number from display name like "TM24 — Thunderbolt"
+			var tmn int
+			if _, err := fmt.Sscanf(item.Name, "tm%d", &tmn); err == nil && tmn > 0 {
+				shopTMSet[tmn] = item.DisplayName
+			}
+		}
+	}
+	if len(shopTMSet) > 0 {
+		var tmLines []string
+		for _, pm := range page.PartyMoves {
+			// Build set of current move powers by type for this party member
+			currentBestByType := map[string]int{}
+			if page.TeamInsights != nil {
+				for _, m := range page.TeamInsights.Members {
+					if capitalizeVersion(pm.SpeciesName) == m.SpeciesName {
+						for _, mv := range m.CurrentMoves {
+							if mv.Power != nil && *mv.Power > currentBestByType[mv.TypeName] {
+								currentBestByType[mv.TypeName] = *mv.Power
+							}
+						}
+						break
+					}
+				}
+			}
+			for _, mv := range pm.Moves {
+				if mv.LearnMethod != "machine" || mv.TMNumber == 0 {
+					continue
+				}
+				if _, inShop := shopTMSet[mv.TMNumber]; !inShop {
+					continue
+				}
+				if mv.Power == nil || *mv.Power < 50 {
+					continue
+				}
+				// Only recommend if it's better than what they already have in that type
+				if currentBest, ok := currentBestByType[mv.TypeName]; ok && currentBest >= *mv.Power {
+					continue
+				}
+				tmLines = append(tmLines, fmt.Sprintf("- %s can learn TM%02d %s (%s %dpwr) — buy at shop",
+					capitalizeVersion(pm.SpeciesName), mv.TMNumber, mv.Name, mv.TypeName, *mv.Power))
+			}
+		}
+		if len(tmLines) > 0 {
+			sb.WriteString("\nTM UPGRADES (available in shop):\n")
+			for _, line := range tmLines {
+				sb.WriteString(line + "\n")
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// buildWalkthroughContext returns targeted walkthrough context for the LLM.
+// Instead of dumping the full badge section, it extracts:
+//  1. Section header (gym info, threats, strategy) — always included.
+//  2. Items & TMs filtered to the player's current location.
+//  3. Unlocks — what opens after this badge.
+//  4. Side Quests — when present.
+//
+// This keeps the payload focused on the player's actual progress.
+func buildWalkthroughContext(versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
+	section := walkthroughs.Lookup(versionName, badgeCount)
+	if section == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nWALKTHROUGH (current progression):\n")
+
+	// 1. Gym/strategy header (everything before the first ### sub-section).
+	if hdr := walkthroughs.SectionHeader(section); hdr != "" {
+		sb.WriteString(hdr)
+		sb.WriteByte('\n')
+	}
+
+	// 2. Items & TMs — filtered to the player's current location when possible.
+	//    Skipped when the no_item_locations rule is active.
+	if _, noItemsWT := activeRules["no_item_locations"]; !noItemsWT {
+		if items := walkthroughs.SubSection(section, "Items & TMs"); items != "" {
+			filtered := walkthroughs.FilterTableByLocation(items, currentLocation)
+			sb.WriteString("\n")
+			sb.WriteString(filtered)
+			sb.WriteByte('\n')
+		}
+	}
+
+	// 3. Unlocks — key progression gates.
+	if unlocks := walkthroughs.SubSection(section, "Unlocks"); unlocks != "" {
+		sb.WriteString("\n")
+		sb.WriteString(unlocks)
+		sb.WriteByte('\n')
+	}
+
+	// 4. Side Quests — Oak's Aides, etc.
+	if sq := walkthroughs.SubSection(section, "Side Quests"); sq != "" {
+		sb.WriteString("\n")
+		sb.WriteString(sq)
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
+}
+
+// humanizeMethod converts raw encounter method slugs into readable text.
+func humanizeMethod(method string) string {
+	switch method {
+	case "walk":
+		return "tall grass"
+	case "old-rod":
+		return "Old Rod fishing"
+	case "good-rod":
+		return "Good Rod fishing"
+	case "super-rod":
+		return "Super Rod fishing"
+	case "surf":
+		return "surfing"
+	case "rock-smash":
+		return "Rock Smash"
+	case "headbutt":
+		return "Headbutt trees"
+	case "gift", "gift-egg":
+		return "NPC gift"
+	case "only-one":
+		return "static encounter"
+	default:
+		return method
+	}
+}
+
+// formatEvoCondition renders an evolution step's trigger as readable text.
+func formatEvoCondition(step legality.EvolutionStep) string {
+	if minLvl, ok := step.Conditions["min_level"]; ok {
+		return fmt.Sprintf("(Lv%v)", minLvl)
+	}
+	if item, ok := step.Conditions["item"]; ok {
+		return fmt.Sprintf("(use %v)", item)
+	}
+	if step.Trigger == "trade" {
+		return "(trade)"
+	}
+	// Fallback: show trigger name
+	return fmt.Sprintf("(%s)", step.Trigger)
 }
 
 // nextOpponents returns up to 2 upcoming gym leaders / E4 members for the run's
@@ -498,7 +1195,7 @@ func nextOpponents(db *sql.DB, runID int) ([]OpponentSummary, error) {
 		summaries = append(summaries, OpponentSummary{
 			Name:          name,
 			TypeSpecialty: typeSpecialty,
-			LocationName:  locationName,
+			LocationName:  humanizeLocationName(locationName),
 			BadgeOrder:    badgeOrder,
 			Team:          team,
 		})

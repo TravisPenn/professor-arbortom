@@ -123,12 +123,19 @@ func loadLocations(db *sql.DB, versionID int) ([]LocationOption, error) {
 	}
 	defer rows.Close()
 
+	seen := make(map[string]bool)
 	var locs []LocationOption
 	for rows.Next() {
 		var l LocationOption
 		if err := rows.Scan(&l.ID, &l.Name, &l.Region); err != nil {
 			return nil, err
 		}
+		l.Name = humanizeLocationName(l.Name)
+		key := l.Name + "|" + l.Region
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		locs = append(locs, l)
 	}
 	return locs, rows.Err()
@@ -261,6 +268,7 @@ func loadRouteLog(db *sql.DB, runID int, nuzlockeOn bool) ([]RouteEntry, error) 
 		if err := rows.Scan(&e.LocationName, &e.SpeciesName, &e.Outcome, &e.Level, &locID); err != nil {
 			continue
 		}
+		e.LocationName = humanizeLocationName(e.LocationName)
 		// Map acquisition_type to human label.
 		switch e.Outcome {
 		case "wild":
