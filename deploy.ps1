@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# deploy.ps1 — Build and deploy PokemonProfessor to LXC 131
+# deploy.ps1 — Build and deploy PokemonProfessor to LXC
 #
 # Usage:
 #   .\deploy.ps1               # build + deploy via Ansible
@@ -7,8 +7,9 @@
 #
 # Requirements:
 #   - Go 1.22+ in PATH
-#   - SSH access to root@192.168.1.100 (key auth)
-#   - D:\GitHub\proxmox\playbooks\update-pokemonprofessor.yml present
+#   - SSH access to your Proxmox host (key auth)
+#   - Ansible playbook path set in deploy.config.ps1
+#   - Copy deploy.config.ps1.example -> deploy.config.ps1 and fill in your values
 
 param(
     [switch]$SkipBuild
@@ -16,10 +17,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$BINARY    = "pokemonprofessor-linux-amd64"
-$PROXMOX   = "root@192.168.1.100"
-$PLAYBOOK  = "D:\GitHub\proxmox\playbooks\update-pokemonprofessor.yml"
-$HEALTH_URL = "http://192.168.1.131:8000/health"
+# ── Local config (gitignored) ──────────────────────────────────────────────────
+# Defaults — override by creating deploy.config.ps1 from deploy.config.ps1.example
+$BINARY     = "pokemonprofessor-linux-amd64"
+$PROXMOX    = "root@<proxmox-host>"
+$PLAYBOOK   = "<path-to-playbook>/update-pokemonprofessor.yml"
+$HEALTH_URL = "http://<lxc-ip>:8000/health"
+
+$configFile = Join-Path $PSScriptRoot "deploy.config.ps1"
+if (Test-Path $configFile) {
+    . $configFile
+} else {
+    Write-Error "deploy.config.ps1 not found. Copy deploy.config.ps1.example and fill in your values."
+    exit 1
+}
 
 Push-Location $PSScriptRoot
 
@@ -58,7 +69,7 @@ try {
     Write-Host "    $health" -ForegroundColor Green
 } catch {
     Write-Warning "Direct health check failed (Tailscale/VPN required). Check via Proxmox:"
-    Write-Host "    ssh $PROXMOX `"curl -sf http://192.168.1.131:8000/health`""
+    Write-Host "    ssh $PROXMOX `"curl -sf $HEALTH_URL`"
 }
 
 Write-Host "==> Done." -ForegroundColor Green
