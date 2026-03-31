@@ -186,6 +186,9 @@ var gen3FlagDefs = []FlagDef{
 	{Key: "hm.rock_smash_obtained", Label: "Got HM Rock Smash", Description: "Enables smashing rocks"},
 	{Key: "hm.waterfall_obtained", Label: "Got HM Waterfall", Description: "Enables climbing waterfalls"},
 	{Key: "hm.dive_obtained", Label: "Got HM Dive", Description: "Enables diving (Emerald / R/S only)"},
+	{Key: "item.old_rod", Label: "Got Old Rod", Description: "Enables Old Rod fishing encounters"},
+	{Key: "item.good_rod", Label: "Got Good Rod", Description: "Enables Good Rod fishing encounters"},
+	{Key: "item.super_rod", Label: "Got Super Rod", Description: "Enables Super Rod fishing encounters"},
 }
 
 func loadFlags(db *sql.DB, runID, versionID int) ([]FlagDef, map[string]bool, error) {

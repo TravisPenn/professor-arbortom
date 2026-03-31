@@ -193,13 +193,14 @@ func TestQueryCoach_DefaultPromptWhenEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Empty system prompt → falls back to defaultSystemPrompt → 2 messages: system + user.
+	// Empty system prompt → falls back to defaultSystemPrompt.
+	// Message structure: system, user (context), assistant (primer), user (question) = 4 messages.
 	cc := NewCoachClient(srv.URL, "qwen2.5:3b", "")
 	cc.http.Timeout = 2 * time.Second
 	cc.QueryCoach(1, CoachPayload{Question: "test"})
 
-	if len(reqBody.Messages) != 2 {
-		t.Errorf("expected 2 messages (system + user), got %d", len(reqBody.Messages))
+	if len(reqBody.Messages) != 4 {
+		t.Errorf("expected 4 messages (system, user context, assistant primer, user question), got %d", len(reqBody.Messages))
 	}
 	if len(reqBody.Messages) > 0 && reqBody.Messages[0]["role"] != "system" {
 		t.Errorf("first message role = %q, want %q", reqBody.Messages[0]["role"], "system")
@@ -209,6 +210,9 @@ func TestQueryCoach_DefaultPromptWhenEmpty(t *testing.T) {
 		if len(content) == 0 {
 			t.Error("system message content should not be empty")
 		}
+	}
+	if len(reqBody.Messages) == 4 && reqBody.Messages[3]["role"] != "user" {
+		t.Errorf("last message role = %q, want %q", reqBody.Messages[3]["role"], "user")
 	}
 }
 

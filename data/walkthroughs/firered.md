@@ -16,6 +16,11 @@
 | Viridian City | Potion (from Mart clerk after Parcel delivery) |
 | Viridian Forest | Potion, Antidote, Poké Ball (hidden), Potion (hidden) |
 
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Pokédex + 5 Poké Balls | Professor Oak | Pallet Town lab | Deliver Oak's Parcel from Viridian Mart |
+
 ### Unlocks
 - Deliver Oak's Parcel (Viridian Mart → Oak) → Pokédex + 5 Poké Balls.
 - Pokédex required to buy Poké Balls at any Mart.
@@ -37,9 +42,15 @@
 ### Items & TMs
 | Location | Items |
 |---|---|
+| Pewter Gym | TM39 Rock Tomb (Brock reward) |
 | Route 3 | — |
 | Mt. Moon | TM09 Bullet Seed (1F), TM46 Thief (B2F), Moon Stone (B2F), Rare Candy (hidden, B2F), Star Piece (hidden, B2F) |
 | Mt. Moon | Dome Fossil OR Helix Fossil (choose one from Super Nerd) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Dome Fossil OR Helix Fossil | Super Nerd (choose one) | Mt. Moon B2F | Defeat Super Nerd |
 
 ### Unlocks
 - Boulder Badge → Flash usable outside battle.
@@ -59,11 +70,17 @@
 ### Items & TMs
 | Location | Items |
 |---|---|
-| Route 4 | TM05 Roar (hidden) |
+| Route 4 | TM05 Roar (hidden), Magikarp (purchase, $500 from man in Pokémon Center) |
 | Cerulean City | Bicycle (Bike Voucher from Vermilion) |
 | Route 24 (Nugget Bridge) | Nugget (reward after 5 trainers) |
 | Route 25 | TM43 Secret Power |
 | Cerulean City | TM28 Dig (from Rocket grunt backyard after Nugget Bridge) |
+| Cerulean Gym | TM03 Water Pulse (Misty reward) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| S.S. Ticket | Bill | Bill's house, Route 25 | Beat Nugget Bridge trainers + visit Bill |
 
 ### Unlocks
 - Cascade Badge → Cut outside battle.
@@ -85,10 +102,19 @@
 ### Items & TMs
 | Location | Items |
 |---|---|
-| Vermilion City | Old Rod (Fishing Guru), Bike Voucher (Pokémon Fan Club chairman) |
-| S.S. Anne | HM01 Cut (Captain's cabin) |
+| Vermilion City | Old Rod (Fishing Guru, house south of Pokémon Center), Vs. Seeker (from girl in Pokémon Center), Bike Voucher (Pokémon Fan Club chairman) |
+| S.S. Anne | HM01 Cut (Captain's cabin), TM31 Brick Break (1F cabin), TM44 Rest (B1F cabin) |
 | Diglett's Cave | Connects Rt 11 ↔ Rt 2 |
 | Route 9 | TM40 Aerial Ace |
+| Vermilion Gym | TM34 Shock Wave (Lt. Surge reward) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Old Rod | Fishing Guru | House south of Pokémon Center, Vermilion City | Talk to NPC |
+| Vs. Seeker | Girl in Pokémon Center | Vermilion City Pokémon Center | Talk to NPC |
+| Bike Voucher | Pokémon Fan Club Chairman | Pokémon Fan Club, Vermilion City | Listen to his story |
+| HM01 Cut | S.S. Anne Captain | S.S. Anne Captain's cabin, Vermilion City | Board S.S. Anne with S.S. Ticket |
 
 ### Unlocks
 - HM01 Cut (S.S. Anne) → cut trees everywhere. S.S. Anne departs after Cut obtained — do not leave without it.
@@ -116,13 +142,22 @@
 | Rock Tunnel | — (bring Flash) |
 | Lavender Town | — (Pokémon Tower blocked without Silph Scope) |
 | Celadon Dept Store 2F | TM05 Roar (buy) |
-| Celadon Dept Store 3F | TM15 Hyper Beam (7500), TM42 Facade (buy) |
+| Celadon Dept Store 3F | TM15 Hyper Beam (7500), TM16 Light Screen (3000), TM17 Protect (3000), TM20 Safeguard (3000), TM33 Reflect (3000), TM42 Facade (3000), TM48 Skill Swap (3000) |
 | Celadon Dept Store 4F | Poké Doll (1000), Fire Stone, Thunder Stone, Water Stone, Leaf Stone |
 | Celadon Condominiums | TM41 Torment (from woman, 1F), Eevee (gift, rooftop back entrance) |
 | Celadon Game Corner | Coin Case (from man in back), TM13 Ice Beam (4000 coins), TM23 Iron Tail (3500 coins), TM35 Flamethrower (4000 coins), TM24 Thunderbolt (4000 coins) |
 | Celadon Game Corner Prizes | Abra (180 coins), Clefairy (500), Scyther (5500, FR), Dratini (2800), Porygon (9999) |
 | Rocket Hideout (B1F-B4F) | TM12 Taunt (B2F), Rare Candy (B3F), TM49 Snatch (B4F), Silph Scope (Giovanni, B4F), Lift Key (B4F) |
 | Celadon City | TM45 Attract (1F house) |
+| Celadon Gym | TM19 Giga Drain (Erika reward) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Eevee | NPC gift | Celadon Condominiums rooftop (back entrance) | None |
+| Coin Case | Man in back room | Celadon Game Corner | Talk to NPC |
+| Silph Scope | Giovanni (defeat him) | Rocket Hideout B4F, Celadon City | Clear Rocket Hideout |
+| Poké Flute | Mr. Fuji | Lavender Town (after Pokémon Tower rescue) | Silph Scope + clear Pokémon Tower |
 
 ### Unlocks
 - Rainbow Badge → Strength outside battle.
@@ -147,14 +182,27 @@
 ### Items & TMs
 | Location | Items |
 |---|---|
-| Route 12 | TM36 Sludge Bomb, Snorlax encounter (Lv 30, use Poké Flute) |
+| Route 12 | TM36 Sludge Bomb, Snorlax encounter (Lv 30, use Poké Flute), Leftovers (hidden, where Snorlax slept) |
 | Route 16 | HM02 Fly (from girl in house, Cut tree), Snorlax encounter (Lv 30) |
 | Safari Zone Area 1 | TM11 Sunny Day |
 | Safari Zone Area 2 | TM47 Steel Wing |
 | Safari Zone Center | HM03 Surf (Secret House, deep in zone) |
-| Safari Zone Area 3 | TM22 Solar Beam, Gold Teeth |
+| Safari Zone Area 3 | TM22 Solar Beam, TM32 Double Team (hidden), Gold Teeth |
 | Fuchsia City | Good Rod (Fishing Guru), HM04 Strength (Safari Zone Warden, give Gold Teeth) |
 | Route 15 | TM18 Rain Dance |
+| Fuchsia Gym | TM06 Toxic (Koga reward) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Good Rod | Fishing Guru | Fuchsia City (house east of Pokémon Center) | Talk to NPC |
+| HM03 Surf | NPC in Secret House | Safari Zone (deep inside, past all areas) | Pay 500 to enter Safari Zone |
+| Gold Teeth | Ground item | Safari Zone Area 3 | Enter Safari Zone |
+| HM04 Strength | Safari Zone Warden | Fuchsia City (Warden's house) | Give him the Gold Teeth from Safari Zone |
+| HM02 Fly | Girl in house | Route 16 (south of Celadon, cut tree to reach) | HM01 Cut |
+| Exp. Share | Oak's Aide | Route 15 gate 2F | Catch 50 Pokémon |
+| Amulet Coin | Oak's Aide | Route 16 gate 2F | Catch 40 Pokémon |
+| Super Rod | Fishing Guru | Route 12 (house south of Lavender Town) | Talk to NPC |
 
 ### Unlocks
 - Soul Badge → Surf outside battle (requires HM03 from Safari Zone).
@@ -165,6 +213,7 @@
 
 ### Side Quests
 - **Oak's Aide — Rt 15 gate 2F**: Catch 50 Pokémon → Exp. Share.
+- **Oak's Aide — Rt 16 gate 2F**: Catch 40 Pokémon → Amulet Coin.
 
 ---
 
@@ -182,10 +231,19 @@
 | Saffron City | TM29 Psychic (Mr. Psychic's house SE) |
 | Silph Co. 3F | TM01 Focus Punch |
 | Silph Co. 5F | Card Key (opens all locked doors), TM36 Sludge Bomb |
+| Silph Co. 7F | TM08 Bulk Up |
 | Silph Co. 7F | Lapras (gift, Lv 25, from Silph employee), Rival battle |
 | Silph Co. 11F | Master Ball (from President after defeating Giovanni) |
 | Fighting Dojo | Hitmonlee OR Hitmonchan (beat all trainers, choose one) |
 | Saffron City | TM04 Calm Mind (from Sabrina after gym win) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| Card Key | Found on floor | Silph Co. 5F, Saffron City | Access Silph Co. (need drink for guards) |
+| Lapras | Silph Co. employee | Silph Co. 7F, Saffron City | Reach 7F during Silph Co. event |
+| Master Ball | Silph Co. President | Silph Co. 11F, Saffron City | Defeat Giovanni at Silph Co. |
+| Hitmonlee OR Hitmonchan | Karate Master (choose one) | Fighting Dojo, Saffron City | Beat all Dojo trainers |
 
 ### Unlocks
 - Saffron City access requires giving a drink to any gate guard (Celadon vending machines: Fresh Water, Soda Pop, or Lemonade). One drink opens all 4 gates.
@@ -196,8 +254,14 @@
 ### Tutor Moves (version_group 7)
 | Location | Move |
 |---|---|
-| Mt. Moon (return visit) | Mega Punch |
-| Viridian City | Dream Eater, Softboiled |
+| Rt 4 exit (Mt. Moon) | Mega Punch, Mega Kick |
+| Pewter Museum (back door, Cut) | Seismic Toss |
+| Viridian City (behind Cut tree) | Dream Eater |
+| Rock Tunnel 1F | Rock Slide |
+| Silph Co. (with Card Key) | Thunder Wave |
+| Saffron City (Copycat's house, give Poké Doll) | Mimic |
+| Pokémon Mansion (Cinnabar) | Metronome |
+| Victory Road exit | Double-Edge |
 
 ---
 
@@ -218,6 +282,13 @@
 | Pokémon Mansion B1F | TM22 Solar Beam |
 | Cinnabar Lab | Fossil revival: Dome Fossil → Kabuto (5), Helix Fossil → Omanyte (5), Old Amber → Aerodactyl (5) |
 | Cinnabar Island | TM38 Fire Blast (Blaine gym reward) |
+
+### Key Items
+| Item | Given By | Location | Prerequisite |
+|---|---|---|---|
+| HM07 Waterfall | Found on ground | Seafoam Islands B4F | Surf + Strength to navigate ice puzzles |
+| Secret Key | Found in mansion | Pokémon Mansion 3F, Cinnabar Island | Navigate mansion switch puzzles |
+| Old Amber | Museum Scientist | Pewter Museum backroom | HM01 Cut (cut tree to enter) |
 
 ### Unlocks
 - Surf from Pallet Town south or Fuchsia Rt 19 south → Cinnabar Island.
@@ -240,7 +311,7 @@
 ### Items & TMs
 | Location | Items |
 |---|---|
-| Viridian City | TM26 Earthquake (Giovanni gym reward) |
+| Viridian City | TM26 Earthquake (Giovanni gym reward), Macho Brace (hidden, tile where Giovanni stood) |
 | Victory Road 1F | TM02 Dragon Claw, TM07 Hail |
 | Victory Road 2F | TM50 Overheat, Full Heal, Rare Candy (hidden) |
 | Victory Road 3F | TM37 Sandstorm |
@@ -250,9 +321,6 @@
 - Route 22 → Route 23 → Victory Road. Each badge gate on Rt 23 checks one badge.
 - Victory Road requires Surf, Strength, Rock Smash to traverse.
 - After E4: Cerulean Cave opens (requires National Dex) → Mewtwo.
-
-### Side Quests
-- **Oak's Aide — Rt 16 gate 2F**: Catch 40 Pokémon → Amulet Coin.
 
 ---
 
@@ -363,7 +431,9 @@
 | Two Island (Joyful Game Corner) | Mimic | 2 Tiny Mushroom or 1 Big Mushroom |
 | Two Island (Joyful Game Corner) | Swords Dance | 2 Tiny Mushroom or 1 Big Mushroom |
 
-### Static Encounters Summary
+---
+
+## Static Encounters Summary
 | Pokémon | Location | Level | Requirement |
 |---|---|---|---|
 | Snorlax ×2 | Rt 12, Rt 16 | 30 | Poké Flute |
@@ -371,11 +441,16 @@
 | Zapdos | Power Plant | 50 | Surf (from Rt 10) |
 | Moltres | Mt. Ember (One Island) | 50 | Post-E4, Sevii pass |
 | Mewtwo | Cerulean Cave B1F | 70 | Post-E4 + National Dex |
+| Entei | Roaming Kanto | 50 | Post-E4, starter = Bulbasaur |
+| Raikou | Roaming Kanto | 50 | Post-E4, starter = Squirtle |
+| Suicune | Roaming Kanto | 50 | Post-E4, starter = Charmander |
 | Lugia | Navel Rock | 70 | Mystic Ticket event |
 | Ho-Oh | Navel Rock | 70 | Mystic Ticket event |
 | Deoxys | Birth Island | 30 | Aurora Ticket event |
 
-### HM Checklist
+---
+
+## HM Checklist
 | HM | Move | Location | Badge Required |
 |---|---|---|---|
 | HM01 | Cut | S.S. Anne Captain | Cascade (Badge 2) |
@@ -383,10 +458,12 @@
 | HM03 | Surf | Safari Zone Secret House | Soul (Badge 5) |
 | HM04 | Strength | Fuchsia Warden (Gold Teeth) | Rainbow (Badge 4) |
 | HM05 | Flash | Oak's Aide Rt 2 (10 caught) | Boulder (Badge 1) |
-| HM06 | Rock Smash | Ember Spa (One Island) / Rt 12 | Marsh (Badge 6) |
+| HM06 | Rock Smash | Ember Spa (One Island) | Marsh (Badge 6) |
 | HM07 | Waterfall | Seafoam Islands B4F | — (FRLG field use: post-E4 only) |
 
-### All TMs (01–50)
+---
+
+## All TMs (01–50)
 | TM | Move | Type | Location | Method | Earliest |
 |---|---|---|---|---|---|
 | TM01 | Focus Punch | Fighting | Silph Co. 3F | Floor item | Badge 6 |
@@ -419,7 +496,7 @@
 | TM28 | Dig | Ground | Cerulean City — Rocket grunt north side | NPC gift | Badge 2 |
 | TM29 | Psychic | Psychic | Mr. Psychic's house, Saffron City | NPC gift | Badge 6 |
 | TM30 | Shadow Ball | Ghost | Celadon Game Corner | 4500 coins | Badge 4 |
-| TM31 | Brick Break | Fighting | S.S. Anne 1F (room) | Floor item | Badge 2 |
+| TM31 | Brick Break | Fighting | S.S. Anne 1F (cabin) | Floor item | Badge 2 |
 | TM32 | Double Team | Normal | Safari Zone Area 3 | Hidden item | Badge 5 |
 | TM33 | Reflect | Psychic | Celadon Dept Store 3F | Buy (3000₽) | Badge 4 |
 | TM34 | Shock Wave | Electric | Vermilion Gym (Lt. Surge reward) | Gym reward | Badge 3 |

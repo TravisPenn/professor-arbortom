@@ -69,7 +69,7 @@ try {
     Write-Host "    $health" -ForegroundColor Green
 } catch {
     Write-Warning "Direct health check failed (Tailscale/VPN required). Check via Proxmox:"
-    Write-Host "    ssh $PROXMOX `"curl -sf $HEALTH_URL`"
+    Write-Host "    ssh $PROXMOX `"curl -sf $HEALTH_URL`""
 }
 
 Write-Host "==> Done." -ForegroundColor Green
