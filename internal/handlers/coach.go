@@ -148,12 +148,14 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 		return CoachPage{}, err
 	}
 
-	// CD-001: Deduplicate acquisitions by (species, form, location), merging level ranges.
-	type acqKey struct{ species, form, location string }
+	// CD-001: Deduplicate acquisitions by (species, form, location, method),
+	// merging level ranges. Method is part of the key so rod-locked fishing
+	// encounters stay separate from NPC gifts at the same location.
+	type acqKey struct{ species, form, location, method string }
 	grouped := map[acqKey]*legality.Acquisition{}
 	var groupOrder []acqKey
 	for _, a := range acqs {
-		k := acqKey{a.SpeciesName, a.FormName, a.LocationName}
+		k := acqKey{a.SpeciesName, a.FormName, a.LocationName, a.Method}
 		if g, ok := grouped[k]; ok {
 			if a.MinLevel < g.MinLevel {
 				g.MinLevel = a.MinLevel
@@ -200,8 +202,23 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 	for _, it := range append(ownedItems, shopItems...) {
 		itemOptions = append(itemOptions, itemToOption(it))
 	}
+	sort.Slice(itemOptions, func(i, j int) bool {
+		si, sj := sourceOrder(itemOptions[i].Source), sourceOrder(itemOptions[j].Source)
+		if si != sj {
+			return si < sj
+		}
+		if itemOptions[i].Category != itemOptions[j].Category {
+			return itemOptions[i].Category < itemOptions[j].Category
+		}
+		return itemOptions[i].DisplayName < itemOptions[j].DisplayName
+	})
 
 	// Summarize party moves — select level as well.
+	// Pre-compute TM locations from walkthrough for annotation.
+	var versionName string
+	db.QueryRow(`SELECT gv.name FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&versionName) //nolint:errcheck
+	tmLocs := walkthroughs.TMLocations(versionName)
+
 	rows, err := db.Query(
 		`SELECT party_slot, form_id, level FROM run_pokemon WHERE run_id = ? AND in_party = 1 ORDER BY party_slot`,
 		runID,
@@ -247,7 +264,11 @@ func buildCoachPage(c *gin.Context, db *sql.DB, pokeClient *pokeapi.Client, runI
 		mvs, _ := legality.CoachMoves(db, runID, formID, level)
 		var moveOpts []MoveOption
 		for _, mv := range mvs {
-			moveOpts = append(moveOpts, moveToOption(mv))
+			opt := moveToOption(mv)
+			if opt.TMNumber > 0 && opt.TutorLocation == "" && tmLocs != nil {
+				opt.TutorLocation = tmLocs[opt.TMNumber]
+			}
+			moveOpts = append(moveOpts, opt)
 		}
 
 		party = append(party, PartyMoveSummary{
@@ -532,7 +553,9 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 	}
 
 	// 1. Best TM upgrade: find the single best TM a party member can learn
-	//    that's super-effective or at least strong against the next opponent
+	//    that's super-effective or at least strong against the next opponent.
+	//    Only consider TMs obtainable at the current badge count.
+	availableTMs := walkthroughs.AvailableTMs(versionName, badgeCount)
 	type tmCandidate struct {
 		species  string
 		tmNum    int
@@ -557,6 +580,12 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 		}
 		for _, mv := range pm.Moves {
 			if mv.LearnMethod != "machine" || mv.TMNumber == 0 || mv.Power == nil || *mv.Power < 50 {
+				continue
+			}
+			// Skip TMs not yet obtainable at the current badge count.
+			// availableTMs is nil for versions without a TM reference table
+			// (RSE) — allow all TMs through in that case.
+			if availableTMs != nil && !availableTMs[mv.TMNumber] {
 				continue
 			}
 			if currentBest, ok := currentBestByType[mv.TypeName]; ok && currentBest >= *mv.Power {
@@ -1069,6 +1098,20 @@ func buildWalkthroughContext(versionName string, badgeCount int, currentLocation
 	}
 
 	return sb.String()
+}
+
+// sourceOrder returns a sort key for item sources: owned < obtainable < shop.
+func sourceOrder(source string) int {
+	switch source {
+	case "owned":
+		return 0
+	case "obtainable":
+		return 1
+	case "shop":
+		return 2
+	default:
+		return 3
+	}
 }
 
 // humanizeMethod converts raw encounter method slugs into readable text.

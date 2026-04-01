@@ -55,7 +55,7 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 }
 
 func loadVersionOptions(db *sql.DB) ([]VersionOption, error) {
-	rows, err := db.Query(`SELECT id, name FROM game_version ORDER BY id`)
+	rows, err := db.Query(`SELECT id, name FROM game_version ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -179,15 +179,15 @@ func loadEncountersByLocation(db *sql.DB, versionID int) (map[int][]EncounterOpt
 // These are displayed as checkboxes on the progress screen.
 var gen3FlagDefs = []FlagDef{
 	{Key: "hm.cut_obtained", Label: "Got HM Cut", Description: "Enables Cut on the field and unlocks cut-locked areas"},
-	{Key: "hm.fly_obtained", Label: "Got HM Fly", Description: "Enables Fly between towns"},
-	{Key: "hm.surf_obtained", Label: "Got HM Surf", Description: "Enables Surf encounters and water routes"},
-	{Key: "hm.strength_obtained", Label: "Got HM Strength", Description: "Enables moving boulders"},
-	{Key: "hm.flash_obtained", Label: "Got HM Flash", Description: "Enables Flash in dark areas"},
-	{Key: "hm.rock_smash_obtained", Label: "Got HM Rock Smash", Description: "Enables smashing rocks"},
-	{Key: "hm.waterfall_obtained", Label: "Got HM Waterfall", Description: "Enables climbing waterfalls"},
 	{Key: "hm.dive_obtained", Label: "Got HM Dive", Description: "Enables diving (Emerald / R/S only)"},
-	{Key: "item.old_rod", Label: "Got Old Rod", Description: "Enables Old Rod fishing encounters"},
+	{Key: "hm.flash_obtained", Label: "Got HM Flash", Description: "Enables Flash in dark areas"},
+	{Key: "hm.fly_obtained", Label: "Got HM Fly", Description: "Enables Fly between towns"},
+	{Key: "hm.rock_smash_obtained", Label: "Got HM Rock Smash", Description: "Enables smashing rocks"},
+	{Key: "hm.strength_obtained", Label: "Got HM Strength", Description: "Enables moving boulders"},
+	{Key: "hm.surf_obtained", Label: "Got HM Surf", Description: "Enables Surf encounters and water routes"},
+	{Key: "hm.waterfall_obtained", Label: "Got HM Waterfall", Description: "Enables climbing waterfalls"},
 	{Key: "item.good_rod", Label: "Got Good Rod", Description: "Enables Good Rod fishing encounters"},
+	{Key: "item.old_rod", Label: "Got Old Rod", Description: "Enables Old Rod fishing encounters"},
 	{Key: "item.super_rod", Label: "Got Super Rod", Description: "Enables Super Rod fishing encounters"},
 }
 

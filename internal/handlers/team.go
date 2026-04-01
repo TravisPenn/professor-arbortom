@@ -222,7 +222,7 @@ func ShowBox(db *sql.DB) gin.HandlerFunc {
 		if !showFainted {
 			query += ` AND rp.is_alive = 1`
 		}
-		query += ` ORDER BY rp.id`
+		query += ` ORDER BY p.species_name, rp.id`
 
 		rows, err := db.Query(query, run.ID)
 		if err != nil {

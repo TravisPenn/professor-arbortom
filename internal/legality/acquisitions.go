@@ -35,7 +35,7 @@ func LegalAcquisitions(db *sql.DB, runID int) ([]Acquisition, []Warning, error) 
 		JOIN location l ON l.id = e.location_id
 		WHERE e.location_id = ?
 		  AND l.version_id = ?
-		ORDER BY p.species_name, e.method
+		ORDER BY e.method, p.species_name
 	`, *rs.LocationID, rs.VersionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("legality: acquisitions query: %w", err)

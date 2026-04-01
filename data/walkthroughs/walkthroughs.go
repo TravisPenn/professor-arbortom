@@ -10,6 +10,7 @@ package walkthroughs
 import (
 	"embed"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -200,4 +201,103 @@ func extractSection(doc string, badgeCount int) string {
 		}
 	}
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// tmEntry holds parsed data for one row of the "All TMs" reference table.
+type tmEntry struct {
+	Number   int
+	Location string
+	Badge    int // -1 when unparseable ("Varies")
+}
+
+// parseTMTable extracts all rows from the "## All TMs" reference table.
+// Returns nil when the version has no such table.
+func parseTMTable(versionName string) []tmEntry {
+	fname, ok := versionFile[strings.ToLower(versionName)]
+	if !ok {
+		return nil
+	}
+	data, err := fs.ReadFile(fname)
+	if err != nil {
+		return nil
+	}
+
+	doc := string(data)
+	idx := strings.Index(doc, "## All TMs")
+	if idx < 0 {
+		return nil
+	}
+	section := doc[idx:]
+
+	var entries []tmEntry
+	headerSkipped := 0
+	for _, line := range strings.Split(section, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") && !strings.HasPrefix(trimmed, "## All TMs") {
+			break
+		}
+		if !strings.Contains(trimmed, "|") {
+			continue
+		}
+		if headerSkipped < 2 {
+			headerSkipped++
+			continue
+		}
+		cols := strings.Split(trimmed, "|")
+		if len(cols) < 7 {
+			continue
+		}
+		// Column layout: | TM | Move | Type | Location | Method | Earliest |
+		tmCol := strings.TrimSpace(cols[1])
+		locationCol := strings.TrimSpace(cols[4])
+		earliestCol := strings.TrimSpace(cols[6])
+
+		var tmNum int
+		if strings.HasPrefix(strings.ToLower(tmCol), "tm") {
+			tmNum, _ = strconv.Atoi(strings.TrimLeft(tmCol[2:], "0"))
+		}
+		if tmNum == 0 {
+			continue
+		}
+
+		badge := -1
+		if strings.HasPrefix(earliestCol, "Badge ") {
+			badge, _ = strconv.Atoi(strings.TrimPrefix(earliestCol, "Badge "))
+		}
+		entries = append(entries, tmEntry{Number: tmNum, Location: locationCol, Badge: badge})
+	}
+	return entries
+}
+
+// AvailableTMs returns the set of TM numbers obtainable at or before the given
+// badge count. Returns nil when the version has no TM reference table.
+func AvailableTMs(versionName string, badgeCount int) map[int]bool {
+	entries := parseTMTable(versionName)
+	if entries == nil {
+		return nil
+	}
+	available := make(map[int]bool)
+	for _, e := range entries {
+		if e.Badge >= 0 && e.Badge <= badgeCount {
+			available[e.Number] = true
+		}
+	}
+	if len(available) == 0 {
+		return nil
+	}
+	return available
+}
+
+// TMLocations returns a map of TM number → location name (e.g. "Silph Co. 3F").
+// Returns nil when the version has no TM reference table.
+func TMLocations(versionName string) map[int]string {
+	entries := parseTMTable(versionName)
+	if entries == nil {
+		return nil
+	}
+	locs := make(map[int]string, len(entries))
+	for _, e := range entries {
+		locs[e.Number] = e.Location
+	}
+	return locs
 }
