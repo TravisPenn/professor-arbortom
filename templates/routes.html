@@ -105,6 +105,7 @@
 </main>
   <script id="encounters-data" type="application/json">{{.EncountersByLocation | toJSON}}</script>
   <script src="/static/routes.js"></script>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}

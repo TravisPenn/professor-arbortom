@@ -16,12 +16,13 @@ type BasePage struct {
 
 // RunContext carries the active run fields available on every run-scoped page.
 type RunContext struct {
-	ID          int
-	Name        string
-	VersionName string
-	BadgeCount  int
-	ActiveRules []string // only enabled rule keys
-	BadgePips   []bool   // true=filled, length always 8
+	ID              int
+	Name            string
+	VersionName     string
+	BadgeCount      int
+	CurrentLocation string   // human-readable location name, or ""
+	ActiveRules     []string // only enabled rule keys
+	BadgePips       []bool   // true=filled, length always 8
 }
 
 // Flash carries a single flash message to display after redirect.
@@ -260,12 +261,44 @@ type OverviewPage struct {
 	ActiveRules []string
 	// Coach
 	CoachAvailable bool
+
+	// Inline progress editing (merged from ProgressPage)
+	Locations        []LocationOption
+	CurrentLocID     *int
+	BadgeCount       int
+	AllFlags         []FlagDef
+	ActiveFlagMap    map[string]bool // keyed by flag key
+	LocationsSeeding bool
+	HydrationTotal   int
+	HydrationSeeded  int
 }
 
 type OverviewSlot struct {
 	Slot        int
 	SpeciesName string // empty = empty slot
 	Level       int
+}
+
+// ─── Pokémon page (merged Team + Box + Route logging) ─────────────────────────
+
+type PokemonPage struct {
+	BasePage
+	// Team section
+	Slots [6]PartySlot
+	// Box section
+	Entries     []BoxEntry
+	ShowFainted bool
+	NuzlockeOn  bool
+	// Route logging section
+	Log                  []RouteEntry
+	Locations            []LocationOption
+	EncountersByLocation map[int][]EncounterOption
+	DuplicateWarning     *DuplicateWarning
+	ValidationError      string
+	FormLocationID       int
+	FormSpecies          string
+	FormOutcome          string
+	FormLevel            int
 }
 
 // ─── Coaching Panel ───────────────────────────────────────────────────────────

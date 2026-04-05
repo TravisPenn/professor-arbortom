@@ -164,7 +164,7 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			pokeClient.GoEnsurePokemon(db, starterFormID, versionGroupID)
 		}
 
-		c.Redirect(http.StatusFound, "/runs/"+itoa(runID)+"/progress")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(runID)+"/overview")
 	}
 }
 
@@ -175,7 +175,7 @@ func ShowRun(c *gin.Context) {
 }
 
 // ShowOverview renders GET /runs/:run_id/overview — a single-page summary dashboard.
-func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
+func ShowOverview(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		run := c.MustGet("run").(models.Run)
 		progress := c.MustGet("progress").(models.RunProgress)
@@ -189,12 +189,34 @@ func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 			currentLocName = humanizeLocationName(currentLocName)
 		}
 
-		_, activeFlags, _ := loadFlags(db, run.ID, run.VersionID)
+		allFlags, activeFlags, _ := loadFlags(db, run.ID, run.VersionID)
 		var flagLabels []string
 		for _, fd := range gen3FlagDefs {
 			if activeFlags[fd.Key] {
 				flagLabels = append(flagLabels, fd.Label)
 			}
+		}
+
+		// ── Locations (for inline progress editing) ───────────────────────────
+		locations, _ := loadLocations(db, run.VersionID)
+		hasPokeAPILocations := false
+		for _, l := range locations {
+			if l.ID > 0 {
+				hasPokeAPILocations = true
+				break
+			}
+		}
+		seeding := false
+		if !hasPokeAPILocations && pokeClient != nil {
+			regionID := pokeapi.RegionIDForVersionID(run.VersionID)
+			if regionID != 0 {
+				seeding = true
+				pokeClient.GoEnsureRegionLocations(db, regionID)
+			}
+		}
+		hydTotal, hydSeeded, _ := getHydrationStats(db, run.VersionID)
+		if !seeding && hydTotal > 0 && hydSeeded < hydTotal && pokeClient != nil {
+			pokeClient.GoEnsureAllEncounters(db, run.VersionID)
 		}
 
 		// ── Team: slots 1-6 ───────────────────────────────────────────────────
@@ -257,6 +279,15 @@ func ShowOverview(db *sql.DB, zc *services.CoachClient) gin.HandlerFunc {
 			RecentRoutes:        recentRoutes,
 			ActiveRules:         ruleKeys,
 			CoachAvailable:      zc.IsAvailable(),
+			// Inline progress editing
+			Locations:        locations,
+			CurrentLocID:     progress.CurrentLocationID,
+			BadgeCount:       progress.BadgeCount,
+			AllFlags:         allFlags,
+			ActiveFlagMap:    activeFlags,
+			LocationsSeeding: seeding,
+			HydrationTotal:   hydTotal,
+			HydrationSeeded:  hydSeeded,
 		}
 		c.HTML(http.StatusOK, "overview.html", page)
 	}

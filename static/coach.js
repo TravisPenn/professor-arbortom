@@ -49,7 +49,7 @@
       submitBtn.textContent = 'Thinking\u2026';
       var w = document.getElementById('coach-rec-container');
       if (w) {
-        w.innerHTML = '<div class="coach-loading-container"><p class="coach-loading muted">Professor Arbortom is thinking\u2026</p></div>';
+        w.innerHTML = '<div class="coach-loading-container"><div class="coach-answer coach-thinking"><video class="thinking-video" autoplay loop muted playsinline><source src="/static/thinking.mp4" type="video/mp4"></video><p class="coach-loading muted">Professor Arbortom is thinking\u2026</p></div></div>';
       }
       fetchRec(url);
       // Re-enable after fetch initiates (response callback handles content)

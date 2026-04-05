@@ -69,7 +69,7 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 				respondError(c, err)
 				return
 			}
-			c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/team")
+			c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
 			return
 		}
 
@@ -198,7 +198,7 @@ func UpdateTeam(db *sql.DB) gin.HandlerFunc {
 			}
 		}
 
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/team")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
 	}
 }
 
@@ -275,7 +275,7 @@ func MarkFainted(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		db.Exec(`UPDATE run_pokemon SET is_alive = 0 WHERE id = ? AND run_id = ?`, entryID, run.ID) // SEC-008: Faint status is user-visible but non-fatal if missed; nuzlocke re-checks on load.
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
 	}
 }
 
@@ -287,7 +287,7 @@ func MarkRevived(db *sql.DB) gin.HandlerFunc {
 
 		// Revive is only allowed if Nuzlocke is disabled
 		if isRuleEnabled(activeRules, "nuzlocke") {
-			c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
+			c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
 			return
 		}
 
@@ -296,7 +296,7 @@ func MarkRevived(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		db.Exec(`UPDATE run_pokemon SET is_alive = 1 WHERE id = ? AND run_id = ?`, entryID, run.ID) // SEC-008: Revive status is user-visible but non-fatal; page refreshes re-check state.
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
 	}
 }
 
@@ -354,7 +354,149 @@ func EvolveBox(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			pokeClient.GoEnsurePokemon(db, toFormID, versionGroupID)
 		}
 
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/box")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
+	}
+}
+
+// ShowPokemon renders GET /runs/:run_id/pokemon — merged Team + Box + Route logging.
+func ShowPokemon(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		run := c.MustGet("run").(models.Run)
+		activeRules := c.MustGet("active_rules").([]models.ActiveRule)
+
+		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
+
+		// ── Team slots ─────────────────────────────────────────
+		var slots [6]PartySlot
+		for i := 0; i < 6; i++ {
+			slots[i] = PartySlot{Slot: i + 1}
+		}
+		teamRows, err := db.Query(
+			`SELECT party_slot, form_id, level, moves_json, COALESCE(held_item_id, 0)
+			FROM run_pokemon WHERE run_id = ? AND in_party = 1`, run.ID)
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		defer teamRows.Close()
+		for teamRows.Next() {
+			var s PartySlot
+			var movesJSON string
+			var heldItemID int
+			if err := teamRows.Scan(&s.Slot, &s.FormID, &s.Level, &movesJSON, &heldItemID); err != nil {
+				continue
+			}
+			if heldItemID > 0 {
+				s.HeldItemID = &heldItemID
+			}
+			var moveIDs []int
+			json.Unmarshal([]byte(movesJSON), &moveIDs) //nolint:errcheck
+			for i, mid := range moveIDs {
+				if i < 4 {
+					id := mid
+					s.MoveIDs[i] = &id
+				}
+			}
+			if s.FormID != nil {
+				db.QueryRow(`SELECT p.species_name, p.form_name FROM pokemon p WHERE p.id = ?`, *s.FormID).Scan(&s.SpeciesName, &s.FormName) //nolint:errcheck
+				for i, mid := range s.MoveIDs {
+					if mid != nil {
+						var chip MoveChip
+						var power, accuracy sql.NullInt64
+						db.QueryRow(
+							`SELECT name, COALESCE(damage_class,''), power, accuracy, pp, COALESCE(effect_entry,'')
+							FROM move WHERE id = ?`, *mid,
+						).Scan(&chip.Name, &chip.DamageClass, &power, &accuracy, &chip.PP, &chip.Effect) //nolint:errcheck
+						if power.Valid {
+							v := int(power.Int64)
+							chip.Power = &v
+						}
+						if accuracy.Valid {
+							v := int(accuracy.Int64)
+							chip.Accuracy = &v
+						}
+						s.MoveNames[i] = chip.Name
+						s.Moves[i] = chip
+					}
+				}
+			}
+			slots[s.Slot-1] = s
+		}
+
+		// ── Box entries ────────────────────────────────────────
+		showFainted := c.Query("fainted") == "true"
+		boxQuery := `
+			SELECT rp.id, rp.form_id, p.species_name, p.form_name, rp.level,
+				rp.caught_level, rp.acquisition_type,
+				COALESCE(l.name, '') AS met_location, rp.is_alive
+			FROM run_pokemon rp
+			JOIN pokemon p ON p.id = rp.form_id
+			LEFT JOIN location l ON l.id = rp.met_location_id
+			WHERE rp.run_id = ?`
+		if !showFainted {
+			boxQuery += ` AND rp.is_alive = 1`
+		}
+		boxQuery += ` ORDER BY p.species_name, rp.id`
+		boxRows, err := db.Query(boxQuery, run.ID)
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		defer boxRows.Close()
+		var entries []BoxEntry
+		for boxRows.Next() {
+			var e BoxEntry
+			var alive int
+			if err := boxRows.Scan(&e.ID, &e.FormID, &e.SpeciesName, &e.FormName, &e.Level, &e.CaughtLevel, &e.AcquisitionType, &e.MetLocation, &alive); err != nil {
+				continue
+			}
+			e.MetLocation = humanizeLocationName(e.MetLocation)
+			e.IsAlive = alive == 1
+			entries = append(entries, e)
+		}
+		for i, e := range entries {
+			if !e.IsAlive {
+				continue
+			}
+			evos, _ := legality.EvolutionOptions(db, run.ID, e.FormID)
+			for _, evo := range evos {
+				if evo.CurrentlyPossible && evo.BlockedByRule == nil {
+					entries[i].Evolutions = append(entries[i].Evolutions, evo)
+				}
+			}
+		}
+
+		// ── Route log + locations ────────────────────────────
+		routeLog, _ := loadRouteLog(db, run.ID, nuzlockeOn)
+		locations, _ := loadLocations(db, run.VersionID)
+		encounters, _ := loadEncountersByLocation(db, run.VersionID)
+		if pokeClient != nil {
+			pokeClient.GoEnsureAllEncounters(db, run.VersionID)
+		}
+
+		// Default the location dropdown to the player's current location.
+		progress := c.MustGet("progress").(models.RunProgress)
+		var defaultLocID int
+		if progress.CurrentLocationID != nil {
+			defaultLocID = *progress.CurrentLocationID
+		}
+
+		page := PokemonPage{
+			BasePage: BasePage{
+				PageTitle:  "Pokémon",
+				ActiveNav:  "pokemon",
+				RunContext: buildRunContext(c),
+			},
+			Slots:                slots,
+			Entries:              entries,
+			ShowFainted:          showFainted,
+			NuzlockeOn:           nuzlockeOn,
+			Log:                  routeLog,
+			Locations:            locations,
+			EncountersByLocation: encounters,
+			FormLocationID:       defaultLocID,
+		}
+		c.HTML(http.StatusOK, "pokemon.html", page)
 	}
 }
 

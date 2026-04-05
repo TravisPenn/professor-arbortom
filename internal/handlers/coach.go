@@ -17,10 +17,12 @@ import (
 
 // defaultRecommendationPrompt is sent to the LLM on every page load when no
 // user question is present, producing an automatic recommendation.
-const defaultRecommendationPrompt = "Present the VERIFIED RECOMMENDATIONS above as a helpful coach response. " +
-	"Rewrite each fact as a friendly 1-2 sentence tip. Do NOT add, change, or invent any names, types, levels, " +
-	"locations, or moves beyond what the verified recommendations state. " +
-	"If a recommendation says a Pokémon is a certain type, use exactly that type. " +
+const defaultRecommendationPrompt = "Present ONLY the VERIFIED RECOMMENDATIONS above. " +
+	"Output exactly one numbered tip per verified recommendation — no more, no fewer. " +
+	"Keep the original meaning and tense: if it says 'Teach X to Y', say the player SHOULD teach it (future action), " +
+	"NOT that the Pokémon already knows it. If it says 'evolves to', it is a FUTURE evolution, not one that already happened. " +
+	"Do NOT add any recommendations, catches, evolutions, moves, or tips that are not in the VERIFIED RECOMMENDATIONS list. " +
+	"Do NOT invent or change any names, types, levels, locations, or TM numbers. " +
 	"Use **bold** for Pokémon, move, and item names. Number each tip."
 
 // wrapUserQuestion wraps an open-ended player question with grounding instructions
@@ -534,14 +536,14 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		ContextNote: contextNote,
 		GameSummary: buildGameSummary(page, activeRules, versionName, badgeCount, maxPartyLevel, currentLocationName) +
 			buildWalkthroughContext(versionName, badgeCount, currentLocationName, activeRules) +
-			buildPreComputedRecommendations(page, versionName, badgeCount, currentLocationName, activeRules),
+			buildPreComputedRecommendations(db, runID, page, versionName, badgeCount, currentLocationName, activeRules),
 	}, nil
 }
 
 // buildPreComputedRecommendations generates server-side verified recommendations
 // from the structured game data. These are facts the LLM merely needs to present
 // — it cannot hallucinate names, types, or levels because they're computed here.
-func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
+func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, versionName string, badgeCount int, currentLocation string, activeRules map[string]interface{}) string {
 	var recs []string
 
 	// Determine next opponent info for type-relevance scoring
@@ -691,46 +693,60 @@ func buildPreComputedRecommendations(page CoachPage, versionName string, badgeCo
 		}
 	}
 
-	// 4. Evolution advice: if a party member is close to evolving
+	// 4. Evolution delay advice: only when delaying gets a good move sooner.
+	//    General evolution info is in the Team Insights panel.
 	if page.TeamInsights != nil {
+		var vgID int
+		db.QueryRow(`SELECT gv.version_group_id FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&vgID) //nolint:errcheck
 		for _, es := range page.TeamInsights.EvoSummaries {
 			for _, path := range es.Paths {
 				if len(path.Steps) == 0 || !path.FullyLegal {
 					continue
 				}
 				step := path.Steps[0]
-				cond := formatEvoCondition(step)
-				// Find current level of this pokemon
+				minLvl, ok := step.Conditions["min_level"]
+				if !ok {
+					continue // only level-based evos have delay advice
+				}
+				evoLvl := 0
+				switch v := minLvl.(type) {
+				case float64:
+					evoLvl = int(v)
+				case int:
+					evoLvl = v
+				}
+				if evoLvl == 0 {
+					continue
+				}
+				// Find current level
+				var curLevel int
 				for _, pm := range page.PartyMoves {
 					if capitalizeVersion(pm.SpeciesName) == es.SpeciesName {
-						// Check if there's a strong move to learn before evolving
-						var learnFirst string
-						if minLvl, ok := step.Conditions["min_level"]; ok {
-							evoLvl := 0
-							switch v := minLvl.(type) {
-							case float64:
-								evoLvl = int(v)
-							case int:
-								evoLvl = v
-							}
-							for _, mv := range pm.Moves {
-								if mv.LearnMethod == "level-up" && mv.Level > pm.Level && mv.Level < evoLvl && mv.Power != nil && *mv.Power >= 60 {
-									learnFirst = fmt.Sprintf(" Consider waiting until Lv%d to learn %s (%s, %d power) first.",
-										mv.Level, mv.Name, mv.TypeName, *mv.Power)
-									break
-								}
-							}
-						}
-						rec := fmt.Sprintf("%s evolves to %s %s.",
-							es.SpeciesName, capitalizeVersion(step.ToSpeciesName), cond)
-						if learnFirst != "" {
-							rec += learnFirst
-						}
-						recs = append(recs, rec)
+						curLevel = pm.Level
 						break
 					}
 				}
-				break // only first path per pokemon
+				if curLevel == 0 || curLevel+5 < evoLvl {
+					continue // too far from evolving to be actionable
+				}
+				delays, _ := legality.MoveDelayAnalysis(db, es.FormID, path, vgID)
+				for _, d := range delays {
+					if d.Recommendation != "delay" {
+						continue
+					}
+					if d.PreEvoLevel <= curLevel || d.PreEvoLevel > evoLvl {
+						continue // already learned or post-evo level
+					}
+					rec := fmt.Sprintf("Delay evolving %s — it learns %s at Lv%d, but %s doesn't learn it until Lv%d.",
+						es.SpeciesName, d.MoveName, d.PreEvoLevel, capitalizeVersion(step.ToSpeciesName), d.PostEvoLevel)
+					if d.PostEvoLevel == 0 {
+						rec = fmt.Sprintf("Delay evolving %s — it learns %s at Lv%d, which %s can't learn via level-up at all.",
+							es.SpeciesName, d.MoveName, d.PreEvoLevel, capitalizeVersion(step.ToSpeciesName))
+					}
+					recs = append(recs, rec)
+					break // one delay note per pokemon is enough
+				}
+				break // first path only
 			}
 		}
 	}

@@ -23,8 +23,11 @@
       </p>
     </section>
     {{else}}
-    <div class="coach-answer">
-      <p class="coach-loading muted">&#x231B; Professor Arbortom is thinking&hellip;</p>
+    <div class="coach-answer coach-thinking">
+      <video class="thinking-video" autoplay loop muted playsinline>
+        <source src="/static/thinking.mp4" type="video/mp4">
+      </video>
+      <p class="coach-loading muted">Professor Arbortom is thinking&hellip;</p>
     </div>
     {{end}}
   </div>
@@ -272,6 +275,7 @@
 
 </main>
 <script src="/static/coach.js" data-run-id="{{.RunContext.ID}}"></script>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}

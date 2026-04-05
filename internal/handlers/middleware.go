@@ -67,6 +67,7 @@ func RunContextMiddleware(db *sql.DB) gin.HandlerFunc {
 		c.Set("progress", progress)
 		c.Set("active_rules", activeRules)
 		c.Set("version", version)
+		c.Set("_db", db)
 
 		c.Next()
 	}
@@ -124,13 +125,23 @@ func buildRunContext(c *gin.Context) *RunContext {
 		pips[i] = i < prog.BadgeCount
 	}
 
+	var currentLoc string
+	if prog.CurrentLocationID != nil {
+		db, _ := c.Get("_db")
+		if db != nil {
+			db.(*sql.DB).QueryRow(`SELECT name FROM location WHERE id = ?`, *prog.CurrentLocationID).Scan(&currentLoc) //nolint:errcheck
+			currentLoc = humanizeLocationName(currentLoc)
+		}
+	}
+
 	return &RunContext{
-		ID:          run.ID,
-		Name:        run.Name,
-		VersionName: ver.Name,
-		BadgeCount:  prog.BadgeCount,
-		ActiveRules: enabledKeys,
-		BadgePips:   pips,
+		ID:              run.ID,
+		Name:            run.Name,
+		VersionName:     ver.Name,
+		BadgeCount:      prog.BadgeCount,
+		CurrentLocation: currentLoc,
+		ActiveRules:     enabledKeys,
+		BadgePips:       pips,
 	}
 }
 

@@ -8,7 +8,7 @@
 {{template "flash" .}}
 <main>
   <h1>Edit Slot {{.SlotNum}}</h1>
-  <a href="/runs/{{.RunContext.ID}}/team" class="btn btn-sm">← Back to Team</a>
+  <a href="/runs/{{.RunContext.ID}}/pokemon" class="btn btn-sm">← Back to Pokémon</a>
 
   <form method="POST" action="/runs/{{.RunContext.ID}}/team" class="slot-edit-form">
     <input type="hidden" name="slot" value="{{.SlotNum}}">
@@ -120,6 +120,7 @@
     <button type="submit" class="btn btn-primary">Save Slot {{.SlotNum}}</button>
   </form>
 </main>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}

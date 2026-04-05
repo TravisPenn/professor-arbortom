@@ -35,7 +35,7 @@
         </td>
         <td>{{.UpdatedAt}}</td>
         <td class="run-actions">
-          <a href="/runs/{{.ID}}/progress" class="btn btn-sm">Continue</a>
+          <a href="/runs/{{.ID}}/overview" class="btn btn-sm">Continue</a>
           <form method="POST" action="/runs/{{.ID}}/archive" class="form-inline">
             <button type="submit" class="btn btn-sm" title="Archive this run">Archive</button>
           </form>
@@ -117,6 +117,7 @@
   <script id="starters-data" type="application/json">{{.StartersByVersion | toJSON}}</script>
   <script src="/static/runs.js"></script>
 </main>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}
