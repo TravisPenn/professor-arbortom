@@ -27,6 +27,11 @@
 - Pokédex required to buy Poké Balls at any Mart.
 - Route 22 rival fight is optional pre-Brock XP.
 
+### Gates
+- **Route 3**: Blocked by gate NPC until Boulder Badge obtained — Mt. Moon and Cerulean City unreachable.
+- **Viridian Gym**: No leader present; locked until all 7 other badges are obtained.
+- **Route 22 west dead-end**: Open for early rival XP only; no passage beyond until all 8 badges (Victory Road).
+
 ### Side Quests
 - **Oak's Aide — Route 2 gate (after Cut)**: Catch 10 Pokémon → HM05 Flash.
 
@@ -59,6 +64,11 @@
 - Route 3 opens after Brock.
 - Mt. Moon exit → Route 4 → Cerulean City.
 
+### Gates
+- **Return to Pewter City (from Cerulean side)**: No hard lock — Mt. Moon is always traversable on foot in both directions. Fast travel via Fly unavailable until HM02 Fly + Thunder Badge (Badge 3 phase).
+- **Pewter Museum back entrance**: Blocked by Cut tree — Old Amber unobtainable until HM01 Cut (Badge 2 era).
+- **Cerulean Gym / story events**: Physically reachable after Mt. Moon, but Misty must be beaten to progress further east.
+
 ---
 
 ## Badge 2: Misty (Cascade Badge)
@@ -90,6 +100,11 @@
 - S.S. Ticket → board S.S. Anne in Vermilion.
 - Cut → Rt 9 access (east of Cerulean). Cut tree also opens Rt 2 backpath to Oak's Aide.
 - Burgled house (Cerulean) → chase Rocket grunt → TM28 Dig.
+
+### Gates
+- **S.S. Anne [ONE-WAY]**: Ship departs permanently once HM01 Cut is received from the captain — cannot reboard. Collect TM31 Brick Break (1F) and TM44 Rest (B1F) before leaving.
+- **Route 9 / Rock Tunnel**: Cut-tree gate; inaccessible until HM01 Cut obtained this phase.
+- **Return to Pewter City**: Foot travel via Mt. Moon only — fast travel (Fly) not available until Thunder Badge + HM02 Fly (Badge 3 phase).
 
 ---
 
@@ -126,6 +141,11 @@
 - Cut → Rt 9 → Rock Tunnel → Lavender Town.
 - Diglett's Cave (Rt 11) → Rt 2 south side → Oak's Aide (Flash).
 - Bike Voucher (Vermilion Fan Club) → Bicycle (Cerulean Bike Shop).
+
+### Gates
+- **Pewter City fast travel (resolved)**: HM02 Fly (Rt 16, requires Cut) + Thunder Badge unlocks fast travel to all previously visited cities, including Pewter — Mt. Moon backtrack no longer needed.
+- **S.S. Anne**: Permanently closed — no further access.
+- **Lavender Town / Celadon / Fuchsia**: Foot travel required until Fly obtained this badge phase.
 
 ### Side Quests
 - **Oak's Aide — Rt 2 gate**: Catch 10 Pokémon → HM05 Flash.
@@ -169,6 +189,11 @@
 - Pokémon Tower: rescue Mr. Fuji → Poké Flute.
 - Poké Flute → wake Snorlax (Rt 12, Rt 16). Two available.
 - Vending machine drinks (Celadon roof) → give to Saffron guards → Saffron City access.
+
+### Gates
+- **Pokémon Tower upper floors**: Ghost Marowak blocks progress without Silph Scope — clear Rocket Hideout first.
+- **Saffron City**: All 4 gate guards blocked until one vending machine drink given (Fresh Water / Soda Pop / Lemonade from Celadon Dept Store roof); one drink opens all gates permanently.
+- **Route 12 / Route 16**: Snorlax physically blocks the road until Poké Flute used.
 
 ### Side Quests
 - **Oak's Aide — Rt 11 gate 2F**: Catch 30 Pokémon → Itemfinder.
@@ -215,6 +240,11 @@
 - Surf → new water routes accessible (Rt 19-21, Seafoam Islands, Cinnabar, Power Plant).
 - Poké Flute wakes both Snorlax (Rt 12/16) — catch or defeat to open routes.
 
+### Gates
+- **Water routes / Cinnabar Island / Power Plant**: Locked behind Surf + Soul Badge — all inaccessible before this phase.
+- **Seafoam Islands deep floors (Articuno / HM07 Waterfall)**: Require Surf and Strength boulder-puzzle solutions; cannot be cleared without both HMs.
+- **Safari Zone Secret House (HM03 Surf)**: Must be reached within the 500-step limit of a single Safari Zone visit — plan route before entering.
+
 ### Side Quests
 - **Oak's Aide — Rt 15 gate 2F**: Catch 50 Pokémon → Exp. Share.
 - **Oak's Aide — Rt 16 gate 2F**: Catch 40 Pokémon → Amulet Coin.
@@ -255,6 +285,11 @@
 - Card Key (Silph Co. 5F) → opens locked doors on all Silph floors.
 - Clear Silph Co. (beat Giovanni 11F) → Saffron City freed from Rockets.
 - Marsh Badge → Rock Smash outside battle.
+
+### Gates
+- **Silph Co. upper-floor rooms**: Individual doors locked until Card Key (5F) obtained — floors accessible on foot but most rooms blocked.
+- **Cerulean Cave**: Locked until post-E4 + National Dex (60+ species registered).
+- **Fighting Dojo prize**: Hitmonlee / Hitmonchan withheld until all Dojo trainers are defeated.
 
 ### Tutor Moves (version_group 7)
 | Location | Move |
@@ -306,6 +341,11 @@
 - Old Amber (Pewter Museum backroom, requires Cut) → revive Aerodactyl at Cinnabar Lab.
 - Volcano Badge → all Pokémon obey.
 
+### Gates
+- **Cinnabar Gym**: Locked until Secret Key found in Pokémon Mansion 3F — navigate mansion switch puzzles to reach it.
+- **Power Plant**: Requires Surf from Rt 10 (north of Cerulean, past Rock Tunnel) or approached from Lavender side.
+- **Navel Rock / Birth Island**: Event-only locations (Mystic Ticket / Aurora Ticket); inaccessible in standard retail play.
+
 ---
 
 ## Badge 8: Giovanni (Earth Badge)
@@ -332,6 +372,11 @@
 - Victory Road requires Surf, Strength, Rock Smash to traverse.
 - After E4: Cerulean Cave opens (requires National Dex) → Mewtwo.
 
+### Gates
+- **Victory Road (Route 23 checkpoints)**: Eight sequential badge-gate NPCs — each checks one specific badge; all 8 must be held to pass through.
+- **Viridian Gym**: Now unlocked (Giovanni appears) — was inaccessible since game start.
+- **Cerulean Cave**: Remains locked even post-E4 until National Dex obtained (60+ species registered).
+
 ---
 
 ## Elite Four
@@ -348,6 +393,12 @@
 - National Dex (60+ caught species + beat E4) → Cerulean Cave opens → Mewtwo.
 - Rainbow Pass (Islands 4-7) → complete Ruby gem quest on One Island + get National Dex.
 - Ruby gem + Sapphire gem → give both to Celio → Network Machine → trade with Ruby/Sapphire/Emerald.
+
+### Gates
+- **Cerulean Cave**: Locked until National Dex obtained (60+ species); completing the E4 alone is insufficient.
+- **Sevii Islands 4-7**: Locked behind Rainbow Pass — requires Ruby gem delivered to Celio + National Dex.
+- **Rocket Warehouse (Five Island)**: Locked until both passwords collected (one from Gideon on Five Island, one from Rocket grunts at Mt. Ember).
+- **Dotted Hole (Six Island)**: Requires HM01 Cut on the sealed front door — inaccessible without it.
 
 ---
 

@@ -232,7 +232,8 @@ func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse 
 		return CoachResponse{Available: false}
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	const maxBodyBytes = 8 << 20 // 8 MB — guard against runaway model output
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return CoachResponse{Available: false}
 	}
@@ -295,23 +296,5 @@ func formatContext(p CoachPayload) string {
 		sb.WriteString("Game data:\n")
 		sb.Write(data) //nolint:errcheck
 	}
-	return sb.String()
-}
-
-// formatPayload serialises the enriched CoachPayload into a compact prompt string.
-func formatPayload(p CoachPayload) string {
-	var sb strings.Builder
-	if p.ContextNote != "" {
-		sb.WriteString("Context: ")
-		sb.WriteString(p.ContextNote)
-		sb.WriteString("\n\n")
-	}
-	if data, err := json.Marshal(p.Candidates); err == nil {
-		sb.WriteString("Game data:\n")
-		sb.Write(data) //nolint:errcheck
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString("Question: ")
-	sb.WriteString(p.Question)
 	return sb.String()
 }

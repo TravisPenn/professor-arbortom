@@ -39,6 +39,19 @@ func LevelCap(db *sql.DB, rs *RunState) (int, error) {
 	return cap, nil
 }
 
+// hmFlagMap maps HM move names to the run flag that gates their availability.
+// Kept alongside methodFlagMap so both flag-driven gating maps are co-located.
+var hmFlagMap = map[string]string{
+	"cut":        "hm.cut_obtained",
+	"fly":        "hm.fly_obtained",
+	"surf":       "hm.surf_obtained",
+	"strength":   "hm.strength_obtained",
+	"flash":      "hm.flash_obtained",
+	"rock-smash": "hm.rock_smash_obtained",
+	"waterfall":  "hm.waterfall_obtained",
+	"dive":       "hm.dive_obtained",
+}
+
 // methodFlagMap maps encounter methods to the run flag that must be set
 // for those encounters to be available. If the flag is not set (or false),
 // the acquisition is annotated as blocked.

@@ -85,18 +85,7 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 // hmBlockedRule returns a non-empty rule key if this move is an HM move that requires
 // a flag the run hasn't set yet.
 func hmBlockedRule(rs *RunState, moveName string) string {
-	hmFlags := map[string]string{
-		"cut":        "hm.cut_obtained",
-		"fly":        "hm.fly_obtained",
-		"surf":       "hm.surf_obtained",
-		"strength":   "hm.strength_obtained",
-		"flash":      "hm.flash_obtained",
-		"rock-smash": "hm.rock_smash_obtained",
-		"waterfall":  "hm.waterfall_obtained",
-		"dive":       "hm.dive_obtained",
-	}
-
-	flagKey, isHM := hmFlags[moveName]
+	flagKey, isHM := hmFlagMap[moveName]
 	if !isHM {
 		return ""
 	}

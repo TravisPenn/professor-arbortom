@@ -556,7 +556,20 @@ func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, vers
 
 	// 1. Best TM upgrade: find the single best TM a party member can learn
 	//    that's super-effective or at least strong against the next opponent.
-	//    Only consider TMs obtainable at the current badge count.
+	//    Only consider TMs the player actually has access to right now (owned,
+	//    in a shop at the current location, or a nearby pickup). This prevents
+	//    recommending TMs that require backtracking past progression gates.
+	legalItemTMs := make(map[int]string) // TMNumber -> source ("owned"/"shop"/"obtainable")
+	for _, item := range page.LegalItems {
+		lower := strings.ToLower(item.Name)
+		if !strings.HasPrefix(lower, "tm") {
+			continue
+		}
+		var tmn int
+		if _, err := fmt.Sscanf(lower, "tm%d", &tmn); err == nil && tmn > 0 {
+			legalItemTMs[tmn] = item.Source
+		}
+	}
 	availableTMs := walkthroughs.AvailableTMs(versionName, badgeCount)
 	type tmCandidate struct {
 		species  string
@@ -564,6 +577,7 @@ func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, vers
 		moveName string
 		moveType string
 		power    int
+		location string // walkthrough location string, e.g. "Pewter Gym (Brock reward)"
 	}
 	var bestTM *tmCandidate
 	for _, pm := range page.PartyMoves {
@@ -584,9 +598,15 @@ func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, vers
 			if mv.LearnMethod != "machine" || mv.TMNumber == 0 || mv.Power == nil || *mv.Power < 50 {
 				continue
 			}
-			// Skip TMs not yet obtainable at the current badge count.
-			// availableTMs is nil for versions without a TM reference table
-			// (RSE) — allow all TMs through in that case.
+			// Only recommend TMs the player can actually get right now.
+			// legalItemTMs is built from page.LegalItems (owned bag, current shop,
+			// or nearby pickup). This excludes TMs behind progression gates or
+			// requiring a backtrack the player can't easily make.
+			if _, accessible := legalItemTMs[mv.TMNumber]; !accessible {
+				continue
+			}
+			// availableTMs provides a secondary badge-count check for versions
+			// that have a TM reference table (FRLG). nil = RSE, allow through.
 			if availableTMs != nil && !availableTMs[mv.TMNumber] {
 				continue
 			}
@@ -600,6 +620,7 @@ func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, vers
 					moveName: mv.Name,
 					moveType: mv.TypeName,
 					power:    *mv.Power,
+					location: mv.TutorLocation, // populated from walkthrough TM table
 				}
 			}
 		}
@@ -607,32 +628,18 @@ func buildPreComputedRecommendations(db *sql.DB, runID int, page CoachPage, vers
 	if bestTM != nil {
 		rec := fmt.Sprintf("Teach TM%02d %s (%s-type, %d power) to %s.",
 			bestTM.tmNum, bestTM.moveName, bestTM.moveType, bestTM.power, bestTM.species)
-		// Annotate where to get the TM only when confirmed via page.LegalItems,
-		// to avoid stating incorrect availability (e.g. "buy at a Poké Mart"
-		// when the TM is not actually in any shop).
-		for _, item := range page.LegalItems {
-			lower := strings.ToLower(item.Name)
-			if !strings.HasPrefix(lower, "tm") {
-				continue
-			}
-			var tmn int
-			if _, err := fmt.Sscanf(lower, "tm%d", &tmn); err != nil {
-				continue
-			}
-			if tmn != bestTM.tmNum {
-				continue
-			}
-			switch item.Source {
-			case "owned":
-				rec += " (already in your bag)"
-			case "shop":
-				rec += " (buy at the Poké Mart)"
-			case "obtainable":
+		// Annotate acquisition method using the source already known from legalItemTMs.
+		switch legalItemTMs[bestTM.tmNum] {
+		case "owned":
+			rec += " (already in your bag)"
+		case "shop":
+			rec += " (buy at the Poké Mart)"
+		case "obtainable":
+			if bestTM.location != "" {
+				rec += fmt.Sprintf(" (get from %s)", bestTM.location)
+			} else {
 				rec += " (pick up nearby)"
-			default:
-				// Unknown source — omit availability annotation.
 			}
-			break
 		}
 		if oppName != "" {
 			rec += fmt.Sprintf(" Useful against %s's %s-type team.", oppName, oppType)
@@ -1106,7 +1113,14 @@ func buildWalkthroughContext(versionName string, badgeCount int, currentLocation
 		sb.WriteByte('\n')
 	}
 
-	// 4. Side Quests — Oak's Aides, etc.
+	// 4. Gates — map access restrictions and one-way points of no return.
+	if gates := walkthroughs.SubSection(section, "Gates"); gates != "" {
+		sb.WriteString("\n")
+		sb.WriteString(gates)
+		sb.WriteByte('\n')
+	}
+
+	// 5. Side Quests — Oak's Aides, etc.
 	if sq := walkthroughs.SubSection(section, "Side Quests"); sq != "" {
 		sb.WriteString("\n")
 		sb.WriteString(sq)

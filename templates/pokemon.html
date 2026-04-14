@@ -39,12 +39,12 @@
         </div>
         <div class="form-field">
           <label for="form_id_text">Pokémon</label>
-          <select id="form_id_select" name="form_id" disabled class="hidden"
+          <select id="form_id_select" name="species_name" disabled class="hidden"
                   aria-label="Pokémon seen"
                   data-preselect="{{.FormSpecies}}">
             <option value="">&mdash; select &mdash;</option>
           </select>
-          <input type="text" id="form_id_text" name="form_id"
+          <input type="text" id="form_id_text" name="species_name"
                  placeholder="e.g. pidgey" value="{{.FormSpecies}}">
           <span id="pokemon-hint" class="form-hint hidden">Select a location first.</span>
         </div>

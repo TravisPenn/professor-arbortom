@@ -41,12 +41,12 @@ func loadRunSummaries(db *sql.DB) ([]RunSummary, error) {
 			WHERE run_id = ? AND type = 'rule'
 		`, rs.ID)
 		if err == nil {
-			defer ruleRows.Close()
 			for ruleRows.Next() {
 				var key string
 				ruleRows.Scan(&key) //nolint:errcheck
 				rs.ActiveRules = append(rs.ActiveRules, key)
 			}
+			ruleRows.Close()
 		}
 
 		runs = append(runs, rs)

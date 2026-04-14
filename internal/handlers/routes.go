@@ -56,7 +56,7 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
 		locationID := formInt(c, "location_id", 0)
-		speciesName := c.PostForm("form_id") // free text from form
+		speciesName := c.PostForm("species_name") // free text from form
 		outcome := c.PostForm("outcome")
 		level := formInt(c, "level", 0)
 

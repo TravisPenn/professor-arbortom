@@ -83,7 +83,10 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		} else {
 			versionID = n
 			var exists int
-			db.QueryRow(`SELECT COUNT(*) FROM game_version WHERE id = ?`, versionID).Scan(&exists) //nolint:errcheck
+			if err := db.QueryRow(`SELECT COUNT(*) FROM game_version WHERE id = ?`, versionID).Scan(&exists); err != nil {
+				respondError(c, err)
+				return
+			}
 			if exists == 0 {
 				errs["version_id"] = "Unknown version"
 			}
@@ -95,7 +98,10 @@ func CreateRun(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			errs["starter_form_id"] = "Please select a starter Pokémon"
 		} else {
 			var valid int
-			db.QueryRow(`SELECT COUNT(*) FROM game_starter WHERE version_id = ? AND form_id = ?`, versionID, n).Scan(&valid) //nolint:errcheck
+			if err := db.QueryRow(`SELECT COUNT(*) FROM game_starter WHERE version_id = ? AND form_id = ?`, versionID, n).Scan(&valid); err != nil {
+				respondError(c, err)
+				return
+			}
 			if valid == 0 {
 				errs["starter_form_id"] = "Invalid starter for this game version"
 			} else {
