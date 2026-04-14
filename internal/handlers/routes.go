@@ -120,41 +120,14 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		}
 
 		if outcome == "caught" && formID > 0 {
-			// Check for a promotable existing row (Team-first, Routes-second case).
-			var existingID int
-			row := db.QueryRow(`
-				SELECT id FROM run_pokemon
-				WHERE run_id = ? AND form_id = ? AND is_alive = 1
-				  AND acquisition_type IN ('manual', 'wild')
-				ORDER BY id LIMIT 1
-			`, run.ID, formID)
-			if err := row.Scan(&existingID); err != nil && err != sql.ErrNoRows {
+			// Every catch is a distinct Pokémon — always insert a new row.
+			if _, err := db.Exec(`
+				INSERT INTO run_pokemon (run_id, form_id, level, caught_level,
+				    met_location_id, acquisition_type, is_alive)
+				VALUES (?, ?, ?, ?, ?, 'wild', 1)
+			`, run.ID, formID, level, level, metLocPtr); err != nil {
 				respondError(c, err)
 				return
-			}
-
-			if existingID > 0 {
-				// Merge catch data into the existing row.
-				if _, err := db.Exec(`
-					UPDATE run_pokemon
-					SET met_location_id  = ?,
-					    caught_level     = ?,
-					    acquisition_type = 'wild'
-					WHERE id = ?
-				`, metLocPtr, level, existingID); err != nil {
-					respondError(c, err)
-					return
-				}
-			} else {
-				// Entirely new catch — insert.
-				if _, err := db.Exec(`
-					INSERT INTO run_pokemon (run_id, form_id, level, caught_level,
-					    met_location_id, acquisition_type, is_alive)
-					VALUES (?, ?, ?, ?, ?, 'wild', 1)
-				`, run.ID, formID, level, level, metLocPtr); err != nil {
-					respondError(c, err)
-					return
-				}
 			}
 		}
 

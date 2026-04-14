@@ -113,6 +113,7 @@ type MoveChip struct {
 
 type PartySlot struct {
 	Slot         int
+	RunPokemonID int // run_pokemon.id of current occupant (0 = empty)
 	FormID       *int
 	FormName     string
 	SpeciesName  string
@@ -127,6 +128,8 @@ type PartySlot struct {
 
 type FormOption struct {
 	ID            int
+	RunPokemonID  int // non-zero for owned run_pokemon instances
+	Level         int // current level; populated for owned instances
 	SpeciesName   string
 	FormName      string
 	LocationName  string
@@ -164,7 +167,8 @@ type TeamSlotPage struct {
 	BasePage
 	SlotNum        int
 	Slot           PartySlot
-	LegalForms     []FormOption
+	OwnedPokemon   []FormOption // owned run_pokemon instances (select by rp-id)
+	LegalForms     []FormOption // encounter-legal, not yet owned (select by new-id)
 	LegalItems     []ItemOption
 	LegalityErrors map[string]string
 }
@@ -189,6 +193,7 @@ type BoxEntry struct {
 	AcquisitionType string
 	IsAlive         bool
 	Evolutions      []legality.Evolution
+	Moves           []string // current move names
 }
 
 // ─── Routes Log ───────────────────────────────────────────────────────────────

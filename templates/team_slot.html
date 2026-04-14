@@ -16,18 +16,32 @@
     <div class="form-section">
       <h2>Pokémon</h2>
       <div class="form-row">
-        <label for="form_id">Species</label>
-        <select id="form_id" name="form_id">
+        <label for="pokemon_select">Select Pokémon</label>
+        <select id="pokemon_select" name="pokemon_select">
           <option value="">— Empty slot —</option>
-          {{range .LegalForms}}
-          <option value="{{.ID}}"
-            {{if and $.Slot.FormID (eq .ID (deref $.Slot.FormID))}}selected{{end}}>
-            {{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}} — {{.LocationName}}
-            {{if .BlockedByRule}} [{{.BlockedByRule}}]{{end}}
-          </option>
+          {{if .OwnedPokemon}}
+          <optgroup label="Your Pokémon">
+            {{range .OwnedPokemon}}
+            <option value="rp-{{.RunPokemonID}}"
+              {{if eq .RunPokemonID $.Slot.RunPokemonID}}selected{{end}}>
+              {{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}} Lv {{.Level}}{{if .LocationName}} — {{.LocationName}}{{end}}
+            </option>
+            {{end}}
+          </optgroup>
+          {{end}}
+          {{if .LegalForms}}
+          <optgroup label="Available to Catch">
+            {{range .LegalForms}}
+            <option value="new-{{.ID}}"
+              {{if .BlockedByRule}}disabled{{end}}>
+              {{.SpeciesName}}{{if ne .FormName "default"}} ({{.FormName}}){{end}} — {{.LocationName}}
+              {{if .BlockedByRule}} [{{.BlockedByRule}}]{{end}}
+            </option>
+            {{end}}
+          </optgroup>
           {{end}}
         </select>
-        {{if index .LegalityErrors "form_id"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "form_id"}}</span>{{end}}
+        {{if index .LegalityErrors "pokemon_select"}}<span class="badge-blocked">⚠ {{index .LegalityErrors "pokemon_select"}}</span>{{end}}
       </div>
 
       {{if .Slot.FormID}}

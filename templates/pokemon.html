@@ -131,6 +131,7 @@
         <tr>
           <th>Pokémon</th>
           <th>Lv</th>
+          <th>Moves</th>
           <th>Met At</th>
           <th>Status</th>
           <th>Actions</th>
@@ -143,6 +144,7 @@
             {{.SpeciesName}}{{if ne .FormName "default"}} <span class="muted">({{.FormName}})</span>{{end}}
           </td>
           <td>{{.Level}}</td>
+          <td class="team-move-list">{{range .Moves}}<span class="move-chip">{{.}}</span>{{end}}</td>
           <td>{{if .MetLocation}}{{.MetLocation}}{{else}}—{{end}}</td>
           <td>
             {{if .IsAlive}}<span class="badge-available">Alive</span>
