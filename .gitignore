@@ -28,3 +28,5 @@ dist/
 
 # Docker artifacts
 *.tar
+ui-example_1.png
+ui-example_2.png
