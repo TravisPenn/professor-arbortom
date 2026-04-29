@@ -16,12 +16,13 @@ type BasePage struct {
 
 // RunContext carries the active run fields available on every run-scoped page.
 type RunContext struct {
-	ID          int
-	Name        string
-	VersionName string
-	BadgeCount  int
-	ActiveRules []string // only enabled rule keys
-	BadgePips   []bool   // true=filled, length always 8
+	ID              int
+	Name            string
+	VersionName     string
+	BadgeCount      int
+	CurrentLocation string   // human-readable location name, or ""
+	ActiveRules     []string // only enabled rule keys
+	BadgePips       []bool   // true=filled, length always 8
 }
 
 // Flash carries a single flash message to display after redirect.
@@ -112,6 +113,7 @@ type MoveChip struct {
 
 type PartySlot struct {
 	Slot         int
+	RunPokemonID int // run_pokemon.id of current occupant (0 = empty)
 	FormID       *int
 	FormName     string
 	SpeciesName  string
@@ -126,6 +128,8 @@ type PartySlot struct {
 
 type FormOption struct {
 	ID            int
+	RunPokemonID  int // non-zero for owned run_pokemon instances
+	Level         int // current level; populated for owned instances
 	SpeciesName   string
 	FormName      string
 	LocationName  string
@@ -163,7 +167,8 @@ type TeamSlotPage struct {
 	BasePage
 	SlotNum        int
 	Slot           PartySlot
-	LegalForms     []FormOption
+	OwnedPokemon   []FormOption // owned run_pokemon instances (select by rp-id)
+	LegalForms     []FormOption // encounter-legal, not yet owned (select by new-id)
 	LegalItems     []ItemOption
 	LegalityErrors map[string]string
 }
@@ -188,6 +193,7 @@ type BoxEntry struct {
 	AcquisitionType string
 	IsAlive         bool
 	Evolutions      []legality.Evolution
+	Moves           []string // current move names
 }
 
 // ─── Routes Log ───────────────────────────────────────────────────────────────
@@ -260,12 +266,44 @@ type OverviewPage struct {
 	ActiveRules []string
 	// Coach
 	CoachAvailable bool
+
+	// Inline progress editing (merged from ProgressPage)
+	Locations        []LocationOption
+	CurrentLocID     *int
+	BadgeCount       int
+	AllFlags         []FlagDef
+	ActiveFlagMap    map[string]bool // keyed by flag key
+	LocationsSeeding bool
+	HydrationTotal   int
+	HydrationSeeded  int
 }
 
 type OverviewSlot struct {
 	Slot        int
 	SpeciesName string // empty = empty slot
 	Level       int
+}
+
+// ─── Pokémon page (merged Team + Box + Route logging) ─────────────────────────
+
+type PokemonPage struct {
+	BasePage
+	// Team section
+	Slots [6]PartySlot
+	// Box section
+	Entries     []BoxEntry
+	ShowFainted bool
+	NuzlockeOn  bool
+	// Route logging section
+	Log                  []RouteEntry
+	Locations            []LocationOption
+	EncountersByLocation map[int][]EncounterOption
+	DuplicateWarning     *DuplicateWarning
+	ValidationError      string
+	FormLocationID       int
+	FormSpecies          string
+	FormOutcome          string
+	FormLevel            int
 }
 
 // ─── Coaching Panel ───────────────────────────────────────────────────────────
@@ -278,6 +316,7 @@ type CoachPage struct {
 	PartyMoves     []PartyMoveSummary
 	LegalItems     []ItemOption
 	CoachAnswer    *CoachAnswer
+	CoachError     string // non-empty when LLM was available but query failed
 	PlayerQuestion string
 	TeamInsights   *TeamInsights
 	NextOpponents  []OpponentSummary // COACH-015
@@ -329,6 +368,7 @@ type CoachAnswer struct {
 	Text      string
 	Model     string
 	Truncated bool
+	Question  string // non-empty when responding to a user question (vs. auto-recommendation)
 }
 
 // ─── Coach payload enrichment types (COACH-006) ───────────────────────────────

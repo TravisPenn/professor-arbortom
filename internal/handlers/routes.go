@@ -56,7 +56,7 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
 
 		locationID := formInt(c, "location_id", 0)
-		speciesName := c.PostForm("form_id") // free text from form
+		speciesName := c.PostForm("species_name") // free text from form
 		outcome := c.PostForm("outcome")
 		level := formInt(c, "level", 0)
 
@@ -84,56 +84,32 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			`, run.ID, locationID).Scan(&prevSpecies)
 
 			if err == nil && prevSpecies != "" {
-				// Duplicate — re-render with warning
+				// Duplicate — re-render pokemon page with warning
 				var locName string
 				db.QueryRow(`SELECT name FROM location WHERE id = ?`, locationID).Scan(&locName) //nolint:errcheck
 
-				log, _ := loadRouteLog(db, run.ID, nuzlockeOn)
-				locations, _ := loadLocations(db, run.VersionID)
-				encounters, _ := loadEncountersByLocation(db, run.VersionID)
-
-				page := RoutesPage{
-					BasePage: BasePage{
-						PageTitle:  "Routes",
-						ActiveNav:  "routes",
-						RunContext: buildRunContext(c),
-					},
-					Log:                  log,
-					Locations:            locations,
-					EncountersByLocation: encounters,
-					NuzlockeOn:           nuzlockeOn,
-					DuplicateWarning: &DuplicateWarning{
-						LocationName:  locName,
-						PreviousCatch: prevSpecies,
-					},
-					FormLocationID: locationID,
-					FormSpecies:    speciesName,
-					FormOutcome:    outcome,
-					FormLevel:      level,
+				page := buildPokemonPageForRerender(c, db, run, activeRules)
+				page.DuplicateWarning = &DuplicateWarning{
+					LocationName:  locName,
+					PreviousCatch: prevSpecies,
 				}
-				c.HTML(http.StatusOK, "routes.html", page)
+				page.FormLocationID = locationID
+				page.FormSpecies = speciesName
+				page.FormOutcome = outcome
+				page.FormLevel = level
+				c.HTML(http.StatusOK, "pokemon.html", page)
 				return
 			}
 		}
 
 		// Validate level before attempting the DB insert.
 		if outcome == "caught" && (level < 1 || level > 100) {
-			log, _ := loadRouteLog(db, run.ID, nuzlockeOn)
-			locations, _ := loadLocations(db, run.VersionID)
-			encounters, _ := loadEncountersByLocation(db, run.VersionID)
-
-			page := RoutesPage{
-				BasePage:             BasePage{PageTitle: "Routes", ActiveNav: "routes", RunContext: buildRunContext(c)},
-				Log:                  log,
-				Locations:            locations,
-				EncountersByLocation: encounters,
-				NuzlockeOn:           nuzlockeOn,
-				ValidationError:      "Level is required (1–100) when catching a Pokémon.",
-				FormLocationID:       locationID,
-				FormSpecies:          speciesName,
-				FormOutcome:          outcome,
-			}
-			c.HTML(http.StatusUnprocessableEntity, "routes.html", page)
+			page := buildPokemonPageForRerender(c, db, run, activeRules)
+			page.ValidationError = "Level is required (1–100) when catching a Pokémon."
+			page.FormLocationID = locationID
+			page.FormSpecies = speciesName
+			page.FormOutcome = outcome
+			c.HTML(http.StatusUnprocessableEntity, "pokemon.html", page)
 			return
 		}
 
@@ -144,41 +120,14 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 		}
 
 		if outcome == "caught" && formID > 0 {
-			// Check for a promotable existing row (Team-first, Routes-second case).
-			var existingID int
-			row := db.QueryRow(`
-				SELECT id FROM run_pokemon
-				WHERE run_id = ? AND form_id = ? AND is_alive = 1
-				  AND acquisition_type IN ('manual', 'wild')
-				ORDER BY id LIMIT 1
-			`, run.ID, formID)
-			if err := row.Scan(&existingID); err != nil && err != sql.ErrNoRows {
+			// Every catch is a distinct Pokémon — always insert a new row.
+			if _, err := db.Exec(`
+				INSERT INTO run_pokemon (run_id, form_id, level, caught_level,
+				    met_location_id, acquisition_type, is_alive)
+				VALUES (?, ?, ?, ?, ?, 'wild', 1)
+			`, run.ID, formID, level, level, metLocPtr); err != nil {
 				respondError(c, err)
 				return
-			}
-
-			if existingID > 0 {
-				// Merge catch data into the existing row.
-				if _, err := db.Exec(`
-					UPDATE run_pokemon
-					SET met_location_id  = ?,
-					    caught_level     = ?,
-					    acquisition_type = 'wild'
-					WHERE id = ?
-				`, metLocPtr, level, existingID); err != nil {
-					respondError(c, err)
-					return
-				}
-			} else {
-				// Entirely new catch — insert.
-				if _, err := db.Exec(`
-					INSERT INTO run_pokemon (run_id, form_id, level, caught_level,
-					    met_location_id, acquisition_type, is_alive)
-					VALUES (?, ?, ?, ?, ?, 'wild', 1)
-				`, run.ID, formID, level, level, metLocPtr); err != nil {
-					respondError(c, err)
-					return
-				}
 			}
 		}
 
@@ -187,6 +136,27 @@ func LogEncounter(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			pokeClient.GoEnsureLocationEncounters(db, locationID, run.VersionID)
 		}
 
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/routes")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/pokemon")
+	}
+}
+
+// buildPokemonPageForRerender loads the minimum data needed to re-render the
+// pokemon page when a route-logging POST fails validation.
+func buildPokemonPageForRerender(c *gin.Context, db *sql.DB, run models.Run, activeRules []models.ActiveRule) PokemonPage {
+	nuzlockeOn := isRuleEnabled(activeRules, "nuzlocke")
+	routeLog, _ := loadRouteLog(db, run.ID, nuzlockeOn)
+	locations, _ := loadLocations(db, run.VersionID)
+	encounters, _ := loadEncountersByLocation(db, run.VersionID)
+
+	return PokemonPage{
+		BasePage: BasePage{
+			PageTitle:  "Pokémon",
+			ActiveNav:  "pokemon",
+			RunContext: buildRunContext(c),
+		},
+		NuzlockeOn:           nuzlockeOn,
+		Log:                  routeLog,
+		Locations:            locations,
+		EncountersByLocation: encounters,
 	}
 }

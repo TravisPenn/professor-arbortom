@@ -15,12 +15,9 @@
   <span class="nav-run-name">{{.RunContext.Name}}</span>
   <span class="nav-sep">·</span>
   <a href="/runs/{{.RunContext.ID}}/overview"  class="{{if eq .ActiveNav "overview"}}nav-active{{end}}">Overview</a>
-  <a href="/runs/{{.RunContext.ID}}/progress" class="{{if eq .ActiveNav "progress"}}nav-active{{end}}">Progress</a>
-  <a href="/runs/{{.RunContext.ID}}/team"     class="{{if eq .ActiveNav "team"}}nav-active{{end}}">Team</a>
-  <a href="/runs/{{.RunContext.ID}}/box"      class="{{if eq .ActiveNav "box"}}nav-active{{end}}">Box</a>
-  <a href="/runs/{{.RunContext.ID}}/routes"   class="{{if eq .ActiveNav "routes"}}nav-active{{end}}">Routes</a>
-  <a href="/runs/{{.RunContext.ID}}/rules"    class="{{if eq .ActiveNav "rules"}}nav-active{{end}}">Rules</a>
-  <a href="/runs/{{.RunContext.ID}}/coach"    class="{{if eq .ActiveNav "coach"}}nav-active{{end}}">Coach</a>
+  <a href="/runs/{{.RunContext.ID}}/pokemon"   class="{{if eq .ActiveNav "pokemon"}}nav-active{{end}}">Pokémon</a>
+  <a href="/runs/{{.RunContext.ID}}/coach"     class="{{if eq .ActiveNav "coach"}}nav-active{{end}}">Professor</a>
+  <a href="/runs/{{.RunContext.ID}}/rules"     class="nav-link-secondary {{if eq .ActiveNav "rules"}}nav-active{{end}}">Rules</a>
   {{end}}
 </nav>
 {{end}}
@@ -36,6 +33,9 @@
     {{end}}
     ({{.RunContext.BadgeCount}}/8)
   </span>
+  {{if .RunContext.CurrentLocation}}
+  <span>📍 {{.RunContext.CurrentLocation}}</span>
+  {{end}}
   {{if .RunContext.ActiveRules}}
   <span>Rules:
     {{range .RunContext.ActiveRules}}
@@ -50,5 +50,31 @@
 {{define "flash"}}
 {{if .Flash}}
 <div class="flash flash-{{.Flash.Type}}">{{.Flash.Message}}</div>
+{{end}}
+{{end}}
+
+{{define "bottom-nav"}}
+{{if .RunContext}}
+<nav class="bottom-nav">
+  <a href="/runs/{{.RunContext.ID}}/overview" class="{{if eq .ActiveNav "overview"}}bnav-active{{end}}">
+    <span class="bnav-icon">&#x1F3E0;</span>
+    <span>Home</span>
+  </a>
+  <a href="/runs/{{.RunContext.ID}}/pokemon" class="bnav-scan {{if eq .ActiveNav "pokemon"}}bnav-active{{end}}">
+    <span class="bnav-icon">&#x25CE;</span>
+    <span>Pokémon</span>
+  </a>
+  <a href="/runs/{{.RunContext.ID}}/coach" class="{{if eq .ActiveNav "coach"}}bnav-active{{end}}">
+    <span class="bnav-icon">&#x1F9D1;</span>
+    <span>Professor</span>
+  </a>
+</nav>
+{{else}}
+<nav class="bottom-nav">
+  <a href="/runs" class="bnav-active">
+    <span class="bnav-icon">&#x1F464;</span>
+    <span>Runs</span>
+  </a>
+</nav>
 {{end}}
 {{end}}

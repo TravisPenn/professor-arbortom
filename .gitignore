@@ -4,10 +4,17 @@ pokemonprofessor-linux-amd64
 
 # Environment
 .env
+*.env
+pokemonprofessor.env
+
+# Local deploy config (contains real IPs/paths)
+deploy.config.ps1
 
 # SQLite database
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 
 # Build artifacts
 dist/
@@ -21,3 +28,5 @@ dist/
 
 # Docker artifacts
 *.tar
+ui-example_1.png
+ui-example_2.png

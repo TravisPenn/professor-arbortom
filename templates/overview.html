@@ -1,7 +1,7 @@
 {{define "overview.html"}}
 <!DOCTYPE html>
 <html lang="en">
-<head>{{template "html-head" .}}</head>
+<head>{{template "html-head" .}}{{if .LocationsSeeding}}<meta http-equiv="refresh" content="4">{{end}}</head>
 <body>
 {{template "nav" .}}
 {{template "run-banner" .}}
@@ -11,35 +11,112 @@
 
   <div class="overview-grid">
 
-    <!-- ── Progress ──────────────────────────────────────────────────── -->
-    <div class="overview-card">
+    <!-- ── Progress (inline edit) ────────────────────────────────────────── -->
+    <div class="overview-card overview-card-wide">
       <div class="overview-card-header">
         <h2>Progress</h2>
-        <a href="/runs/{{.RunContext.ID}}/progress" class="btn btn-sm">Edit</a>
       </div>
-      <dl class="overview-dl">
-        <dt>Badges</dt>
-        <dd>
-          {{range .RunContext.BadgePips}}
-            {{if .}}<span class="badge-pip badge-pip-filled"></span>{{else}}<span class="badge-pip badge-pip-empty"></span>{{end}}
-          {{end}}
-          ({{.RunContext.BadgeCount}}/8)
-        </dd>
-        <dt>Location</dt>
-        <dd>{{if .CurrentLocationName}}{{.CurrentLocationName}}{{else}}<span class="muted">not set</span>{{end}}</dd>
-        {{if .ActiveFlags}}
-        <dt>HMs / Flags</dt>
-        <dd>{{range .ActiveFlags}}<span class="badge-available flag-chip">{{.}}</span> {{end}}</dd>
-        {{end}}
-      </dl>
+      <form method="POST" action="/runs/{{.RunContext.ID}}/progress" class="progress-inline-form">
+        <div class="progress-row">
+          <div class="progress-badges">
+            {{range $i, $filled := .RunContext.BadgePips}}
+            <span class="badge-pip {{if $filled}}badge-pip-filled{{else}}badge-pip-empty{{end}}" title="Badge {{add $i 1}}"></span>
+            {{end}}
+            <label class="sr-only" for="badge_count">Badges</label>
+            <input type="number" id="badge_count" name="badge_count"
+                   min="0" max="8" value="{{.BadgeCount}}" class="badge-input">
+          </div>
+          <div class="progress-location">
+            <label for="current_location_id">Location</label>
+            {{if .LocationsSeeding}}<span class="muted">⏳ Fetching…</span>{{end}}
+            <select id="current_location_id" name="current_location_id">
+              <option value="">— not set —</option>
+              {{$cur := .CurrentLocID}}
+              {{$curRegion := ""}}
+              {{range .Locations}}
+                {{if ne .Region $curRegion}}
+                  {{if ne $curRegion ""}}</optgroup>{{end}}
+                  <optgroup label="{{.Region}}">
+                  {{$curRegion = .Region}}
+                {{end}}
+                <option value="{{.ID}}"
+                  {{if and $cur (eq .ID (deref $cur))}}selected{{end}}>
+                  {{.Name}}
+                </option>
+              {{end}}
+              {{if ne $curRegion ""}}</optgroup>{{end}}
+            </select>
+          </div>
+        </div>
+
+        <details class="flag-details">
+          <summary>HMs &amp; Story Flags {{if .ActiveFlags}}({{len .ActiveFlags}} active){{end}}</summary>
+          <div class="flag-grid flag-grid-compact">
+            {{range .AllFlags}}
+            <label class="flag-label">
+              <input type="checkbox" name="flags" value="{{.Key}}"
+                {{if index $.ActiveFlagMap .Key}}checked{{end}}>
+              <strong>{{.Label}}</strong>
+            </label>
+            {{end}}
+          </div>
+        </details>
+
+        <button type="submit" class="btn btn-sm btn-primary">Save Progress</button>
+      </form>
+
+      {{if or .LocationsSeeding (gt .HydrationTotal 0)}}
+      <div class="hydration-section hydration-section-compact">
+        <progress id="hydration-bar"
+                  data-run-id="{{.RunContext.ID}}"
+                  max="{{if gt .HydrationTotal 0}}{{.HydrationTotal}}{{else}}100{{end}}"
+                  value="{{.HydrationSeeded}}"></progress>
+        <span id="hydration-label">
+          {{- if .LocationsSeeding -}}
+            ⏳ Fetching location list…
+          {{- else if ge .HydrationSeeded .HydrationTotal -}}
+            ✓ All encounter data ready
+          {{- else -}}
+            {{.HydrationSeeded}} / {{.HydrationTotal}} areas fetched
+          {{- end -}}
+        </span>
+      </div>
+      {{if or .LocationsSeeding (lt .HydrationSeeded .HydrationTotal)}}
+      <script>
+      (function() {
+        var bar = document.getElementById('hydration-bar');
+        var lbl = document.getElementById('hydration-label');
+        var runID = bar.dataset.runId;
+        function poll() {
+          fetch('/runs/' + runID + '/progress/hydration')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              bar.max = d.total;
+              bar.value = d.seeded;
+              var pct = d.total > 0 ? Math.round(d.seeded * 100 / d.total) : 0;
+              lbl.textContent = d.seeded + ' / ' + d.total + ' areas (' + pct + '%)';
+              if (d.total > 0 && d.seeded >= d.total) {
+                lbl.textContent = '✓ All encounter data ready';
+              } else {
+                setTimeout(poll, 2000);
+              }
+            })
+            .catch(function() { setTimeout(poll, 5000); });
+        }
+        setTimeout(poll, 2000);
+      })();
+      </script>
+      {{end}}
+      {{end}}
     </div>
 
     <!-- ── Team ──────────────────────────────────────────────────────── -->
     <div class="overview-card">
       <div class="overview-card-header">
         <h2>Team</h2>
-        <a href="/runs/{{.RunContext.ID}}/team" class="btn btn-sm">Edit</a>
+        <a href="/runs/{{.RunContext.ID}}/pokemon" class="btn btn-sm">Manage</a>
       </div>
+      <div class="table-scroll">
       <table class="overview-team-table">
         <tbody>
           {{range .TeamSlots}}
@@ -53,13 +130,14 @@
           {{end}}
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- ── Box ───────────────────────────────────────────────────────── -->
     <div class="overview-card">
       <div class="overview-card-header">
         <h2>Box</h2>
-        <a href="/runs/{{.RunContext.ID}}/box" class="btn btn-sm">View</a>
+        <a href="/runs/{{.RunContext.ID}}/pokemon" class="btn btn-sm">Manage</a>
       </div>
       <dl class="overview-dl">
         <dt>In box (alive)</dt>
@@ -73,9 +151,10 @@
     <div class="overview-card">
       <div class="overview-card-header">
         <h2>Recent Encounters</h2>
-        <a href="/runs/{{.RunContext.ID}}/routes" class="btn btn-sm">Log</a>
+        <a href="/runs/{{.RunContext.ID}}/pokemon" class="btn btn-sm">Log</a>
       </div>
       {{if .RecentRoutes}}
+      <div class="table-scroll">
       <table class="overview-routes-table">
         <tbody>
           {{range .RecentRoutes}}
@@ -83,8 +162,8 @@
             <td>{{.LocationName}}</td>
             <td><strong>{{.SpeciesName}}</strong></td>
             <td>
-              {{if eq .Outcome "caught"}}<span class="badge-available">caught</span>
-              {{else if eq .Outcome "fainted"}}<span class="badge-blocked">fainted</span>
+              {{if eq .Outcome "Caught"}}<span class="badge-available">caught</span>
+              {{else if eq .Outcome "Starter"}}<span class="badge-info">starter</span>
               {{else}}<span class="badge-warning">{{.Outcome}}</span>{{end}}
             </td>
             <td>{{if .Level}}<span class="muted">Lv&nbsp;{{.Level}}</span>{{end}}</td>
@@ -92,6 +171,7 @@
           {{end}}
         </tbody>
       </table>
+      </div>
       {{else}}
       <p class="muted">No encounters logged yet.</p>
       {{end}}
@@ -127,6 +207,7 @@
 
   </div>
 </main>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}

@@ -20,6 +20,7 @@ var ruleCatalog = []struct {
 	{"nuzlocke", "Nuzlocke", "Only one catch per route; fainted Pokémon are considered dead"},
 	{"level_cap", "Level Cap", "Pokémon cannot exceed the level of the next gym leader's ace"},
 	{"no_trade_evolutions", "No Trade Evolutions", "Trade-evolution Pokémon cannot be evolved"},
+	{"no_item_locations", "No Item/TM Locations", "Hide item and TM pickup recommendations from the coach"},
 	{"theme_run", "Theme Run", "Restrict your team to a specific theme or type"},
 }
 

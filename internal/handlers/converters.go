@@ -18,7 +18,7 @@ func acquisitionToFormOption(a legality.Acquisition) FormOption {
 		ID:            a.FormID,
 		SpeciesName:   a.SpeciesName,
 		FormName:      a.FormName,
-		LocationName:  a.LocationName,
+		LocationName:  humanizeLocationName(a.LocationName),
 		BlockedByRule: b,
 	}
 }

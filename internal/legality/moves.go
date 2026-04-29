@@ -35,7 +35,7 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 		JOIN move m ON m.id = le.move_id
 		WHERE le.form_id = ?
 		  AND le.version_group_id = ?
-		ORDER BY le.learn_method, le.level_learned, m.name
+		ORDER BY le.learn_method, m.name, le.level_learned
 	`, formID, rs.VersionGroupID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("legality: moves query: %w", err)
@@ -85,18 +85,7 @@ func LegalMoves(db *sql.DB, runID, formID int) ([]Move, []Warning, error) {
 // hmBlockedRule returns a non-empty rule key if this move is an HM move that requires
 // a flag the run hasn't set yet.
 func hmBlockedRule(rs *RunState, moveName string) string {
-	hmFlags := map[string]string{
-		"cut":        "hm.cut_obtained",
-		"fly":        "hm.fly_obtained",
-		"surf":       "hm.surf_obtained",
-		"strength":   "hm.strength_obtained",
-		"flash":      "hm.flash_obtained",
-		"rock-smash": "hm.rock_smash_obtained",
-		"waterfall":  "hm.waterfall_obtained",
-		"dive":       "hm.dive_obtained",
-	}
-
-	flagKey, isHM := hmFlags[moveName]
+	flagKey, isHM := hmFlagMap[moveName]
 	if !isHM {
 		return ""
 	}
@@ -145,7 +134,7 @@ func CoachMoves(db *sql.DB, runID, formID, currentLevel int) ([]Move, error) {
 		WHERE le.form_id = ?
 		  AND le.version_group_id = ?
 		  AND le.learn_method != 'egg'
-		ORDER BY le.learn_method, le.level_learned, m.name
+		ORDER BY le.learn_method, m.name, le.level_learned
 	`, formID, rs.VersionGroupID)
 	if err != nil {
 		return nil, fmt.Errorf("legality: coach moves query: %w", err)
@@ -371,7 +360,7 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 			JOIN move m ON m.id = le.move_id
 			WHERE le.form_id = ? AND le.version_group_id = ?
 			  AND le.learn_method != 'egg'
-			ORDER BY le.learn_method, le.level_learned, m.name
+			ORDER BY le.learn_method, m.name, le.level_learned
 		`, evo.formID, versionGroupID)
 		if err != nil {
 			continue
@@ -386,7 +375,7 @@ func appendEvoExclusiveMoves(db *sql.DB, moves []Move, formID, versionGroupID in
 				&mv.Accuracy,
 				&mv.PP,
 				&mv.DamageClass,
-				&mv.EffectEntry,
+				&mv.Effect,
 				&mv.LearnMethod,
 				&mv.LevelLearned,
 			) != nil {
