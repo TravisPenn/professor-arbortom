@@ -1,0 +1,1 @@
+SELECT p.species_name, l.name, l.version_id, e.method, e.min_level, e.max_level FROM pokemon p JOIN encounter e ON e.form_id = p.id JOIN location l ON l.id = e.location_id WHERE lower(p.species_name) IN ('poliwag','poliwhirl') AND l.version_id IN (10,11) ORDER BY p.species_name, l.version_id, l.name

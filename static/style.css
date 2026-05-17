@@ -426,7 +426,7 @@ main > .coach-section, main > .coach-ask, main > .coach-unavailable {
   box-shadow: 0 0 12px var(--accent-glow), inset 0 1px 0 rgba(96, 165, 250, 0.06);
 }
 
-.coach-ask textarea {
+#question {
   width: 100%;
   box-sizing: border-box;
   font-size: 0.95rem;
@@ -438,7 +438,7 @@ main > .coach-section, main > .coach-ask, main > .coach-unavailable {
   color: var(--text);
 }
 
-.coach-ask textarea::placeholder { color: var(--text-dim); }
+#question::placeholder { color: var(--text-dim); }
 
 .answer-text {
   white-space: pre-wrap;
@@ -586,13 +586,43 @@ main > .coach-section, main > .coach-ask, main > .coach-unavailable {
 }
 
 .party-slot-details > .table-scroll,
-.party-slot-details > p {
+.party-slot-details > p,
+.party-slot-details > .party-slot-body {
   padding: 0.5rem 0.75rem;
 }
+
+.party-slot-body { display: flex; flex-direction: column; gap: 0.5rem; }
 
 /* ── Next Battle (Opponents) ──────────────────────────────────────────────── */
 
 .next-battle { margin-bottom: 1rem; }
+
+.next-battle-details { }
+.next-battle-summary {
+  font-size: 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  padding: 0.25rem 0;
+  user-select: none;
+}
+.next-battle-summary::-webkit-details-marker { display: none; }
+.next-battle-summary::before {
+  content: "▶";
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.next-battle-details[open] .next-battle-summary::before {
+  transform: rotate(90deg);
+}
+.next-battle-details[open] .next-battle-summary {
+  margin-bottom: 0.75rem;
+}
 
 .opponent-card {
   background: var(--bg-surface);
@@ -936,18 +966,19 @@ summary {
   .run-actions { flex-wrap: wrap; gap: 0.25rem; }
   .run-actions .btn-sm { min-height: 36px; }
 
-  .coach-ask, .coach-answer, .coach-insights, .coach-section {
+  .coach-answer, .coach-section {
     padding: 0.6rem;
     border-radius: var(--radius-sm);
   }
-  .coach-ask textarea { font-size: 1rem; /* prevent iOS zoom */ }
+  #question { font-size: 1rem; /* prevent iOS zoom */ }
 
   .insight-label { min-width: 60px; font-size: 0.7rem; }
   .insight-member { font-size: 0.82rem; }
 
   .party-slot-details > summary { padding: 0.5rem 0.6rem; font-size: 0.9rem; }
   .party-slot-details > .table-scroll,
-  .party-slot-details > p { padding: 0.35rem 0.5rem; }
+  .party-slot-details > p,
+  .party-slot-details > .party-slot-body { padding: 0.35rem 0.5rem; }
 
   .flag-grid { max-width: 100%; }
   .flag-label { gap: 0.35rem; font-size: 0.88rem; }

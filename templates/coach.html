@@ -38,11 +38,29 @@
   </section>
   {{end}}
 
+  <!-- ── Ask the Professor ─────────────────────────────────────────────── -->
+  <section>
+    <details class="party-slot-details">
+      <summary>Ask the Professor</summary>
+      <div class="party-slot-body">
+        <form id="coach-form" method="POST" action="/runs/{{.RunContext.ID}}/coach">
+          <div class="form-row">
+            <label for="question">Your question</label>
+            <textarea id="question" name="question" rows="3"
+                      placeholder="e.g. What items are nearby?">{{.PlayerQuestion}}</textarea>
+          </div>
+          <button id="coach-submit" type="submit" class="btn btn-primary btn-ask">Ask Professor</button>
+        </form>
+      </div>
+    </details>
+  </section>
+
   <!-- ── Team Insights ─────────────────────────────────────────────────── -->
   {{if .TeamInsights}}
-  <section class="coach-insights">
-    <h2>Team Insights</h2>
-
+  <section>
+    <details class="party-slot-details">
+      <summary>Team Insights</summary>
+      <div class="party-slot-body">
     <div class="insight-members">
       {{range .TeamInsights.Members}}
       <div class="insight-member">
@@ -108,50 +126,41 @@
     </div>
     {{end}}
 
+      </div>
+    </details>
   </section>
   {{end}}
 
   <!-- ── Next Battle ───────────────────────────────────────────────────── -->
   {{if .NextOpponents}}
   <section class="coach-section next-battle">
-    <h2>Next Battle</h2>
-    {{range .NextOpponents}}
-    <div class="opponent-card">
-      <h3>{{.Name}} <span class="type-badge type-{{lower .TypeSpecialty}}">{{.TypeSpecialty | title}}</span></h3>
-      <p class="opponent-location">&#128205; {{.LocationName}}</p>
-      {{if .Team}}
-      <div class="table-scroll">
-      <table class="candidate-table opponent-team">
-        <thead><tr><th>Pokémon</th><th>Lv</th><th>Moves</th></tr></thead>
-        <tbody>
-          {{range .Team}}
-          <tr>
-            <td>{{.SpeciesName | title}}</td>
-            <td>{{.Level}}</td>
-            <td class="opponent-moves">{{join .Moves " · "}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+    <details class="next-battle-details">
+      <summary class="next-battle-summary">Next Battle</summary>
+      {{range .NextOpponents}}
+      <div class="opponent-card">
+        <h3>{{.Name}} <span class="type-badge type-{{lower .TypeSpecialty}}">{{.TypeSpecialty | title}}</span></h3>
+        <p class="opponent-location">&#128205; {{.LocationName}}</p>
+        {{if .Team}}
+        <div class="table-scroll">
+        <table class="candidate-table opponent-team">
+          <thead><tr><th>Pokémon</th><th>Lv</th><th>Moves</th></tr></thead>
+          <tbody>
+            {{range .Team}}
+            <tr>
+              <td>{{.SpeciesName | title}}</td>
+              <td>{{.Level}}</td>
+              <td class="opponent-moves">{{join .Moves " · "}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        </div>
+        {{end}}
       </div>
       {{end}}
-    </div>
-    {{end}}
+    </details>
   </section>
   {{end}}
-
-  <!-- ── Ask the Professor ─────────────────────────────────────────────── -->
-  <section class="coach-ask">
-    <h2>Ask the Professor</h2>
-    <form id="coach-form" method="POST" action="/runs/{{.RunContext.ID}}/coach">
-      <div class="form-row">
-        <label for="question">Your question</label>
-        <textarea id="question" name="question" rows="3"
-                  placeholder="e.g. What items are nearby?">{{.PlayerQuestion}}</textarea>
-      </div>
-      <button id="coach-submit" type="submit" class="btn btn-primary btn-ask">Ask Professor</button>
-    </form>
-  </section>
 
   {{else}}
 
@@ -170,7 +179,8 @@
 
   <!-- ── Available Pokémon ───────────────────────────────────────────── -->
   <section>
-    <h2>Available Pokémon ({{len .Acquisitions}})</h2>
+    <details class="next-battle-details">
+      <summary class="next-battle-summary">Available Pokémon ({{len .Acquisitions}})</summary>
     {{if .Acquisitions}}
     <div class="table-scroll">
     <table class="candidate-table">
@@ -190,11 +200,13 @@
     {{else}}
     <p class="muted">No Pokémon available — set your current location in Progress.</p>
     {{end}}
+    </details>
   </section>
 
   {{if .Trades}}
   <section>
-    <h2>Trades &amp; Game Corner ({{len .Trades}})</h2>
+    <details class="next-battle-details">
+      <summary class="next-battle-summary">Trades &amp; Game Corner ({{len .Trades}})</summary>
     <div class="table-scroll">
     <table class="candidate-table">
       <thead><tr><th>Get</th><th>Give / Cost</th><th>Note</th></tr></thead>
@@ -215,12 +227,14 @@
       </tbody>
     </table>
     </div>
+    </details>
   </section>
   {{end}}
 
   <!-- ── Legal Items ─────────────────────────────────────────────────── -->
   <section>
-    <h2>Legal Items ({{len .LegalItems}})</h2>
+    <details class="next-battle-details">
+      <summary class="next-battle-summary">Legal Items ({{len .LegalItems}})</summary>
     {{if .LegalItems}}
     <div class="table-scroll">
     <table class="candidate-table">
@@ -239,6 +253,7 @@
     {{else}}
     <p class="muted">No items available.</p>
     {{end}}
+    </details>
   </section>
 
   <!-- ── Your Party Moves (expandable per slot) ──────────────────────── -->

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// defaultSystemPrompt is used when COACH_SYSTEM_PROMPT is not set.
+// defaultSystemPrompt is used for proactive page-load recommendations.
 // COACH_SYSTEM_PROMPT env var fully replaces this when set.
 const defaultSystemPrompt = `/nothink
 You are Professor Arbortom, a Pokémon expert coach.
@@ -27,7 +27,7 @@ ABSOLUTE RULES — NEVER BREAK THESE:
    "Evolves to Y" means it CAN evolve (future), NOT that it already evolved. Never add recommendations not in the list.
 3. A Pokémon can ONLY learn moves listed in its "Usable TMs" section. If a move is not listed there, say "[Species] cannot learn [Move] in this game."
 4. TMs can be taught at any time — never say "learn [TM] at level X". Only level-up moves have levels.
-5. Only recommend catches from the "AVAILABLE CATCHES" section. If it says "None", say no catches are available yet.
+5. Only suggest catches listed in "AVAILABLE CATCHES". If it says "None", do not suggest new catches.
 6. Use the exact type listed in the data. Never guess or change a Pokémon's type.
 7. Check "active_rules" for run constraints. Do not assume Nuzlocke or any rule unless listed.
 
@@ -36,6 +36,38 @@ FORMAT:
 - Number each recommendation (1. 2. 3.).
 - 1-2 sentences per recommendation.
 - Never use placeholders like [Pokémon] or [Move].`
+
+// questionSystemPrompt is used when the player submits a question via "Ask the Professor".
+// It drops the recommendations-focused rules and instead directs the model to answer
+// from the provided context, covering Pokémon, items, moves, NPCs, gym leaders, etc.
+const questionSystemPrompt = `/nothink
+You are Professor Arbortom, a Pokémon expert coach answering a specific player question.
+
+The game data you receive contains these sections — use all of them to answer:
+- GAME / BADGES / CURRENT LOCATION / PARTY: the player's current progress and team
+- POKÉMON REFERENCE: catch locations, types, abilities for relevant Pokémon
+- WALKTHROUGH NOTES: story beats and area guidance for the player's current position
+- VERIFIED RECOMMENDATIONS: pre-checked tips (available for context only)
+
+RULES:
+1. The game data is GROUND TRUTH. Never invent information not present in the data.
+2. Answer using ONLY the provided data. Do not use outside knowledge.
+3. LOCATION RULE — CRITICAL: If "found at:" entries exist for a Pokémon in POKÉMON REFERENCE,
+   those ARE the locations. List them directly. Do NOT filter by badge count, rod availability,
+   party level, or any game-progression logic. Do NOT say a location is "unavailable" or
+   "not accessible at this stage". State what the data shows.
+4. ITEM / KEY ITEM questions: answer using item data in the game state or WALKTHROUGH NOTES.
+5. MOVE / TM questions: a Pokémon can ONLY learn moves listed in its "Usable TMs" section.
+   TMs can be taught at any time — they have no level requirement.
+6. NPC / GYM LEADER questions: use WALKTHROUGH NOTES and CURRENT LOCATION context to answer.
+7. Use the exact type listed in the data. Never guess a Pokémon's type.
+8. Only say the data doesn't have an answer if there is literally no relevant entry anywhere.
+
+FORMAT:
+- Use **bold** for Pokémon, move, item, location, and NPC names.
+- For lists of 3 or more locations, moves, or items: use bullet points (one per line), not a run-on sentence.
+- For simple answers (1-2 items): answer in 1-2 sentences.
+- Keep each bullet short — name and key detail only.`
 
 // cacheTTL is how long a cached coach response is considered fresh.
 // Repeated page loads within this window are served instantly without hitting Ollama.
@@ -56,12 +88,13 @@ type cacheEntry struct {
 // calling QueryCoach, but QueryCoach will also return a safe response on failure.
 // Empty host = disabled.
 type CoachClient struct {
-	host         string // base URL, e.g. "http://ollama-lxc:11434"; empty = disabled
-	model        string // Ollama model name, e.g. "qwen2.5:3b"
-	systemPrompt string // persona instructions; always non-empty after NewCoachClient (falls back to defaultSystemPrompt)
-	http         *http.Client
-	cacheMu      sync.Mutex
-	cache        map[string]cacheEntry
+	host                 string // base URL, e.g. "http://ollama-lxc:11434"; empty = disabled
+	model                string // Ollama model name, e.g. "qwen2.5:3b"
+	systemPrompt         string // used for proactive recommendations (page load)
+	questionSystemPrompt string // used when player submits a question
+	http                 *http.Client
+	cacheMu              sync.Mutex
+	cache                map[string]cacheEntry
 }
 
 // CoachPayload is the body sent to the AI Coach.
@@ -70,6 +103,7 @@ type CoachPayload struct {
 	Question    string          `json:"question"`
 	ContextNote string          `json:"context_note,omitempty"`
 	GameSummary string          `json:"-"` // Pre-formatted text; replaces raw JSON when set
+	IsQuestion  bool            `json:"-"` // true when answering a player question vs. proactive recommendations
 }
 
 // CoachCandidates holds all structured candidate data for the Coach.
@@ -99,11 +133,12 @@ func NewCoachClient(host, model, systemPrompt string) *CoachClient {
 		systemPrompt = defaultSystemPrompt
 	}
 	return &CoachClient{
-		host:         host,
-		model:        model,
-		systemPrompt: systemPrompt,
-		http:         &http.Client{Timeout: 120 * time.Second},
-		cache:        make(map[string]cacheEntry),
+		host:                 host,
+		model:                model,
+		systemPrompt:         systemPrompt,
+		questionSystemPrompt: questionSystemPrompt,
+		http:                 &http.Client{Timeout: 120 * time.Second},
+		cache:                make(map[string]cacheEntry),
 	}
 }
 
@@ -198,8 +233,13 @@ func (c *CoachClient) QueryCoach(runID int, payload CoachPayload) CoachResponse 
 
 	log.Printf("[coach] payload (run %d):\n%s\nQuestion: %s", runID, userContent, payload.Question)
 
+	activePrompt := c.systemPrompt
+	if payload.IsQuestion {
+		activePrompt = c.questionSystemPrompt
+	}
+
 	messages := []map[string]string{
-		{"role": "system", "content": c.systemPrompt},
+		{"role": "system", "content": activePrompt},
 		{"role": "user", "content": userContent},
 		{"role": "assistant", "content": "Got it — I've reviewed the current game state and I'm ready to advise."},
 		{"role": "user", "content": payload.Question},

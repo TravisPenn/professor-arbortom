@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -28,10 +29,13 @@ const defaultRecommendationPrompt = "Present ONLY the VERIFIED RECOMMENDATIONS a
 // wrapUserQuestion wraps an open-ended player question with grounding instructions
 // so the model answers strictly from the provided game state rather than hallucinating.
 func wrapUserQuestion(q string) string {
-	return "Answer this question using ONLY the game data provided above. " +
-		"If the answer is not in the data, say you don't have that information. " +
-		"Do NOT use outside knowledge about TM numbers, move names, locations, or types — " +
-		"only reference what appears in the game state context.\n\nPlayer question: " + q
+	return "Answer this question using ONLY the game data provided. " +
+		"Use GAME/BADGES/CURRENT LOCATION/PARTY for progression context. " +
+		"Use POKÉMON REFERENCE for catch locations — if \"found at:\" entries exist, list them directly " +
+		"without filtering by badge count, rod availability, or game stage. " +
+		"Use WALKTHROUGH NOTES for item, NPC, gym leader, and story questions. " +
+		"Do NOT use outside knowledge." +
+		"\n\nPlayer question: " + q
 }
 
 // ShowCoach renders GET /runs/:run_id/coach
@@ -76,7 +80,7 @@ func GetRecommendation(db *sql.DB, pokeClient *pokeapi.Client, zc *services.Coac
 			prompt = wrapUserQuestion(question)
 		}
 
-		payload, err := buildCoachPayload(db, run.ID, page, prompt)
+		payload, err := buildCoachPayload(db, run.ID, page, prompt, question)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "")
 			return
@@ -120,7 +124,7 @@ func QueryCoach(db *sql.DB, pokeClient *pokeapi.Client, zc *services.CoachClient
 			return
 		}
 
-		payload, err := buildCoachPayload(db, run.ID, page, wrapUserQuestion(question))
+		payload, err := buildCoachPayload(db, run.ID, page, wrapUserQuestion(question), question)
 		if err != nil {
 			respondError(c, err)
 			return
@@ -469,9 +473,12 @@ func buildTeamInsights(db *sql.DB, runID int) (*TeamInsights, error) {
 
 // buildCoachPayload assembles the enriched CoachPayload for AI Coach (COACH-006).
 // It reuses the TeamInsights already computed for the page to avoid extra DB queries.
-func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (services.CoachPayload, error) {
+// rawQuestion is the undecorated player question (empty string for default prompts);
+// it is used for on-demand species entity extraction.
+func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question, rawQuestion string) (services.CoachPayload, error) {
 	var versionName string
-	db.QueryRow(`SELECT gv.name FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&versionName) //nolint:errcheck
+	var versionID int
+	db.QueryRow(`SELECT gv.name, gv.id FROM run r JOIN game_version gv ON gv.id = r.version_id WHERE r.id = ?`, runID).Scan(&versionName, &versionID) //nolint:errcheck
 
 	var badgeCount int
 	db.QueryRow(`SELECT COALESCE(badge_count, 0) FROM run WHERE id = ?`, runID).Scan(&badgeCount) //nolint:errcheck
@@ -521,6 +528,12 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		evolutionPaths = page.TeamInsights.EvoPaths
 	}
 
+	// Build party species set to avoid re-printing info already in the PARTY section.
+	partyNames := make(map[string]bool)
+	for _, pm := range page.PartyMoves {
+		partyNames[strings.ToLower(pm.SpeciesName)] = true
+	}
+
 	return services.CoachPayload{
 		Candidates: services.CoachCandidates{
 			Acquisitions:   page.Acquisitions,
@@ -534,9 +547,11 @@ func buildCoachPayload(db *sql.DB, runID int, page CoachPage, question string) (
 		},
 		Question:    question,
 		ContextNote: contextNote,
+		IsQuestion:  rawQuestion != "",
 		GameSummary: buildGameSummary(page, activeRules, versionName, badgeCount, maxPartyLevel, currentLocationName) +
 			buildWalkthroughContext(versionName, badgeCount, currentLocationName, activeRules) +
-			buildPreComputedRecommendations(db, runID, page, versionName, badgeCount, currentLocationName, activeRules),
+			buildPreComputedRecommendations(db, runID, page, versionName, badgeCount, currentLocationName, activeRules) +
+			buildPokemonLookupContext(db, versionID, page, rawQuestion, partyNames),
 	}, nil
 }
 
@@ -1142,6 +1157,152 @@ func sourceOrder(source string) int {
 	default:
 		return 3
 	}
+}
+
+// buildPokemonLookupContext enriches the LLM context with type and location data
+// for non-party Pokémon referenced by the coach (trades, catches) and for any
+// species named in the player's raw question.
+//
+// Proactive: type/ability for all current acquisition species; full type +
+// wild-location data for all trade species (give and receive).
+//
+// On-demand: when rawQuestion is non-empty, all species catchable in the
+// current version are scanned against the question text.  Any match not
+// already covered by the proactive section gets the same treatment.
+func buildPokemonLookupContext(db *sql.DB, versionID int, page CoachPage, rawQuestion string, partyNames map[string]bool) string {
+	if versionID == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	covered := make(map[string]bool)
+
+	// writeEntry appends one species line.  includeLocs controls whether wild
+	// encounter locations are listed (not needed for acquisitions since
+	// AVAILABLE CATCHES already shows that).  isTrade adds pre-evo fallback
+	// lookup and ensures the entry is always written even if the pokemon table
+	// has no row for the species (e.g. Poliwhirl never seeded in this run).
+	writeEntry := func(species, role string, includeLocs, isTrade bool) {
+		key := strings.ToLower(species)
+		if covered[key] || partyNames[key] {
+			return
+		}
+		covered[key] = true
+
+		info, _ := legality.GetPokemonBasicInfo(db, key)
+		var locs []legality.PokemonLocation
+		var preEvoLocs []legality.PreEvoLocations
+		if includeLocs {
+			locs, _ = legality.FindPokemonLocations(db, versionID, key)
+			if len(locs) == 0 {
+				preEvoLocs, _ = legality.FindPreEvoLocations(db, versionID, key)
+			}
+		}
+
+		// Always emit something for trade species so the LLM can answer
+		// "where do I get X?" even when the pokemon table lacks the row.
+		if info == nil && len(locs) == 0 && len(preEvoLocs) == 0 && !isTrade {
+			return
+		}
+
+		line := "- " + capitalizeVersion(species)
+		// Only show the role label when there are no direct catch locations —
+		// otherwise "[to give in trade]" confuses the LLM into thinking the
+		// Pokémon is unobtainable by catching, even when "found at:" follows.
+		if role != "" && len(locs) == 0 {
+			line += " [" + role + "]"
+		}
+		if info != nil {
+			typeStr := capitalizeVersion(info.Type1)
+			if info.Type2 != "" {
+				typeStr += "/" + capitalizeVersion(info.Type2)
+			}
+			line += ": " + typeStr
+			if info.Ability != "" {
+				line += " (" + capitalizeVersion(info.Ability) + ")"
+			}
+		}
+		if len(locs) > 0 {
+			var parts []string
+			for _, l := range locs {
+				part := humanizeLocationName(l.LocationName)
+				if l.MinLevel == l.MaxLevel {
+					part += fmt.Sprintf(" Lv%d %s", l.MinLevel, humanizeMethod(l.Method))
+				} else {
+					part += fmt.Sprintf(" Lv%d-%d %s", l.MinLevel, l.MaxLevel, humanizeMethod(l.Method))
+				}
+				parts = append(parts, part)
+			}
+			line += " — found at: " + strings.Join(parts, "; ")
+		} else if len(preEvoLocs) > 0 {
+			// Not directly catchable — describe how to obtain via evolution.
+			var evolveNotes []string
+			for _, pe := range preEvoLocs {
+				var locParts []string
+				for _, l := range pe.Locs {
+					part := humanizeLocationName(l.LocationName)
+					if l.MinLevel == l.MaxLevel {
+						part += fmt.Sprintf(" Lv%d %s", l.MinLevel, humanizeMethod(l.Method))
+					} else {
+						part += fmt.Sprintf(" Lv%d-%d %s", l.MinLevel, l.MaxLevel, humanizeMethod(l.Method))
+					}
+					locParts = append(locParts, part)
+				}
+				evolveNotes = append(evolveNotes, fmt.Sprintf("catch %s at %s and evolve it",
+					capitalizeVersion(pe.Species), strings.Join(locParts, "; ")))
+			}
+			line += " — not wild-catchable; " + strings.Join(evolveNotes, " or ")
+		} else if includeLocs {
+			// No wild encounters and no seeded encounter data for pre-evolutions.
+			// Fall back to just naming the pre-evolution chain.
+			preEvoNames, _ := legality.FindPreEvolutionNames(db, key)
+			if len(preEvoNames) > 0 {
+				var evolved []string
+				for _, n := range preEvoNames {
+					evolved = append(evolved, capitalizeVersion(n))
+				}
+				line += " — not wild-catchable; obtain by evolving " + strings.Join(evolved, " or ")
+			} else {
+				line += " — not catchable in this version"
+			}
+		}
+		sb.WriteString(line + "\n")
+	}
+
+	// Proactive: acquisitions — type info only (location already in AVAILABLE CATCHES).
+	for _, a := range page.Acquisitions {
+		if a.BlockedByRule == nil {
+			writeEntry(a.SpeciesName, "", false, false)
+		}
+	}
+
+	// Proactive: trade species — type + all wild locations + pre-evo fallback.
+	for _, t := range page.Trades {
+		if t.GiveSpecies != "" {
+			writeEntry(t.GiveSpecies, "to give in trade", true, true)
+		}
+		writeEntry(t.ReceiveSpecies, "trade/game-corner reward", true, true)
+	}
+
+	// On-demand: scan question against ALL seeded species (not just wild-catchable)
+	// so that evolution-only species like Poliwhirl are matched when asked about.
+	if rawQuestion != "" && versionID > 0 {
+		allSpecies, _ := legality.AllPokemonSpeciesNames(db)
+		for _, s := range allSpecies {
+			if !covered[strings.ToLower(s)] && !partyNames[strings.ToLower(s)] {
+				if legality.SpeciesInText(rawQuestion, s) {
+					writeEntry(s, "", true, false)
+				}
+			}
+		}
+	}
+
+	if sb.Len() == 0 {
+		return ""
+	}
+	result := "\nPOKÉMON REFERENCE:\n" + sb.String()
+	log.Printf("[coach] lookup context (version=%d, q=%q):\n%s", versionID, rawQuestion, result)
+	return result
 }
 
 // humanizeMethod converts raw encounter method slugs into readable text.

@@ -97,6 +97,22 @@ type BaseStats struct {
 	Speed     int `json:"speed"`
 }
 
+// PokemonLocation describes one encounter slot where a species can be found.
+type PokemonLocation struct {
+	LocationName string `json:"location_name"`
+	Method       string `json:"method"`
+	MinLevel     int    `json:"min_level"`
+	MaxLevel     int    `json:"max_level"`
+}
+
+// PokemonBasicInfo holds type and ability data for a non-party Pokémon.
+type PokemonBasicInfo struct {
+	SpeciesName string `json:"species_name"`
+	Type1       string `json:"type1"`
+	Type2       string `json:"type2,omitempty"`   // empty if single-type
+	Ability     string `json:"ability,omitempty"` // primary ability, empty if not seeded
+}
+
 // EvolutionGraph holds an in-memory adjacency list of all evolution edges.
 type EvolutionGraph struct {
 	edges map[int][]EvolutionEdge // from_form_id -> []edges
