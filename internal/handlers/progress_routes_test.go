@@ -228,10 +228,10 @@ func TestLogEncounter_StaticLocationSaved(t *testing.T) {
 	router := newRoutesRouter(db, run)
 
 	w := postForm(t, router, "/runs/1/routes", map[string]string{
-		"location_id": "-1", // Pallet Town
-		"form_id":     "rattata",
-		"outcome":     "caught",
-		"level":       "5",
+		"location_id":  "-1", // Pallet Town
+		"species_name": "rattata",
+		"outcome":      "caught",
+		"level":        "5",
 	})
 
 	if w.Code != http.StatusFound {
@@ -252,10 +252,10 @@ func TestLogEncounter_PositiveLocationSaved(t *testing.T) {
 	router := newRoutesRouter(db, run)
 
 	w := postForm(t, router, "/runs/1/routes", map[string]string{
-		"location_id": "10",
-		"form_id":     "rattata",
-		"outcome":     "caught",
-		"level":       "3",
+		"location_id":  "10",
+		"species_name": "rattata",
+		"outcome":      "caught",
+		"level":        "3",
 	})
 
 	if w.Code != http.StatusFound {
@@ -276,10 +276,10 @@ func TestLogEncounter_FledDoesNotRecord(t *testing.T) {
 	router := newRoutesRouter(db, run)
 
 	postForm(t, router, "/runs/1/routes", map[string]string{
-		"location_id": "-1",
-		"form_id":     "rattata",
-		"outcome":     "fled",
-		"level":       "5",
+		"location_id":  "-1",
+		"species_name": "rattata",
+		"outcome":      "fled",
+		"level":        "5",
 	})
 
 	got := metLocationForLatestCatch(t, db, 1)

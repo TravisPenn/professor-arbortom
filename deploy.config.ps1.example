@@ -1,0 +1,7 @@
+# deploy.config.ps1.example — copy to deploy.config.ps1 and fill in your values
+# deploy.config.ps1 is gitignored and never committed.
+
+$BINARY     = "pokemonprofessor-linux-amd64"
+$PROXMOX    = "root@192.168.x.x"
+$PLAYBOOK   = "C:\path\to\playbooks\update-pokemonprofessor.yml"
+$HEALTH_URL = "http://192.168.x.x:8000/health"

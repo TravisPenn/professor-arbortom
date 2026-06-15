@@ -1,0 +1,228 @@
+{{define "pokemon.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>{{template "html-head" .}}</head>
+<body>
+{{template "nav" .}}
+{{template "run-banner" .}}
+{{template "flash" .}}
+<main>
+
+  <!-- ═══ Log Encounter (compact form at top) ═══════════════════════════════ -->
+  <section class="pokemon-section">
+    <h2>Log Encounter</h2>
+
+    {{if .ValidationError}}
+    <div class="banner-error">⚠ {{.ValidationError}}</div>
+    {{end}}
+
+    {{if .DuplicateWarning}}
+    <div class="banner-warning">
+      ⚠ Nuzlocke: you already caught a Pokémon on
+      <strong>{{.DuplicateWarning.LocationName}}</strong>
+      (<em>{{.DuplicateWarning.PreviousCatch}}</em>).
+      Log anyway?
+    </div>
+    {{end}}
+
+    <form method="POST" action="/runs/{{.RunContext.ID}}/routes" class="log-form log-form-compact">
+      <div class="form-row-inline">
+        <div class="form-field">
+          <label for="location_id">Location</label>
+          <select id="location_id" name="location_id" required>
+            <option value="">— select —</option>
+            {{$cur := .FormLocationID}}
+            {{range .Locations}}
+            <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="form_id_text">Pokémon</label>
+          <select id="form_id_select" name="species_name" disabled class="hidden"
+                  aria-label="Pokémon seen"
+                  data-preselect="{{.FormSpecies}}">
+            <option value="">&mdash; select &mdash;</option>
+          </select>
+          <input type="text" id="form_id_text" name="species_name"
+                 placeholder="e.g. pidgey" value="{{.FormSpecies}}">
+          <span id="pokemon-hint" class="form-hint hidden">Select a location first.</span>
+        </div>
+        <div class="form-field">
+          <label for="outcome">Outcome</label>
+          <select id="outcome" name="outcome" required>
+            <option value="">—</option>
+            <option value="caught"  {{if eq .FormOutcome "caught"}}selected{{end}}>Caught</option>
+            <option value="fainted" {{if eq .FormOutcome "fainted"}}selected{{end}}>Fainted</option>
+            <option value="fled"    {{if eq .FormOutcome "fled"}}selected{{end}}>Fled</option>
+            <option value="skipped" {{if eq .FormOutcome "skipped"}}selected{{end}}>Skipped</option>
+          </select>
+        </div>
+        <div class="form-field form-field-narrow" id="level-row">
+          <label for="level">Level</label>
+          <input type="number" id="level" name="level" min="1" max="100"
+                 value="{{if .FormLevel}}{{.FormLevel}}{{end}}">
+        </div>
+        <div class="form-field form-field-btn">
+          {{if .DuplicateWarning}}
+          <button type="submit" class="btn btn-warning">Log Anyway</button>
+          {{else}}
+          <button type="submit" class="btn btn-primary">Log</button>
+          {{end}}
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- ═══ Team ══════════════════════════════════════════════════════════════ -->
+  <section class="pokemon-section">
+    <h2>Team</h2>
+    <div class="table-scroll">
+    <table class="team-overview-table">
+      <thead>
+        <tr>
+          <th>Slot</th>
+          <th>Pokémon</th>
+          <th>Level</th>
+          <th>Moves</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Slots}}
+        <tr>
+          <td class="slot-num">{{.Slot}}</td>
+          <td>
+            {{if .FormID}}
+              <strong>{{.SpeciesName}}</strong>{{if and .FormName (ne .FormName "default")}} <span class="muted">({{.FormName}})</span>{{end}}
+            {{else}}
+              <span class="muted">—</span>
+            {{end}}
+          </td>
+          <td>{{if .Level}}Lv&nbsp;{{deref .Level}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td class="team-move-list">
+            {{range .Moves}}{{if .Name}}<span class="move-chip" title="{{.DamageClass | title}}{{if .Power}} · Pwr {{deref .Power}}{{else}} · Pwr —{{end}}{{if .Accuracy}} · Acc {{deref .Accuracy}}%{{else}} · Acc —{{end}}{{if .PP}} · PP {{.PP}}{{end}}{{if .Effect}} · {{.Effect}}{{end}}">{{.Name}}</span>{{end}}{{end}}
+          </td>
+          <td><a href="/runs/{{$.RunContext.ID}}/team/{{.Slot}}" class="btn btn-sm">Edit</a></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- ═══ Box ═══════════════════════════════════════════════════════════════ -->
+  <section class="pokemon-section">
+    <div class="section-header-row">
+      <h2>Box</h2>
+      <div class="box-filter">
+        {{if .ShowFainted}}
+        <a href="?">Show alive only</a>
+        {{else}}
+        <a href="?fainted=true">Show all (incl. fainted)</a>
+        {{end}}
+      </div>
+    </div>
+
+    {{if .Entries}}
+    <div class="table-scroll">
+    <table class="box-table">
+      <thead>
+        <tr>
+          <th>Pokémon</th>
+          <th>Lv</th>
+          <th>Moves</th>
+          <th>Met At</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Entries}}
+        <tr class="{{if not .IsAlive}}row-fainted{{end}}">
+          <td>
+            {{.SpeciesName}}{{if ne .FormName "default"}} <span class="muted">({{.FormName}})</span>{{end}}
+          </td>
+          <td>{{.Level}}</td>
+          <td class="team-move-list">{{range .Moves}}<span class="move-chip">{{.}}</span>{{end}}</td>
+          <td>{{if .MetLocation}}{{.MetLocation}}{{else}}—{{end}}</td>
+          <td>
+            {{if .IsAlive}}<span class="badge-available">Alive</span>
+            {{else}}<span class="badge-blocked">Fainted</span>{{end}}
+          </td>
+          <td class="box-actions">
+            {{if .IsAlive}}
+            <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/faint" class="form-inline">
+              <button type="submit" class="btn btn-sm btn-danger">Faint</button>
+            </form>
+            {{if .Evolutions}}
+            <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/evolve" class="form-inline">
+              {{if eq (len .Evolutions) 1}}
+              <input type="hidden" name="to_form_id" value="{{(index .Evolutions 0).ToFormID}}">
+              <button type="submit" class="btn btn-sm">Evolve → {{(index .Evolutions 0).ToSpeciesName}}</button>
+              {{else}}
+              <select name="to_form_id" class="form-select-inline">
+                {{range .Evolutions}}
+                <option value="{{.ToFormID}}">{{.ToSpeciesName}}</option>
+                {{end}}
+              </select>
+              <button type="submit" class="btn btn-sm">Evolve</button>
+              {{end}}
+            </form>
+            {{end}}
+            {{else if not $.NuzlockeOn}}
+            <form method="POST" action="/runs/{{$.RunContext.ID}}/box/{{.ID}}/revive" class="form-inline">
+              <button type="submit" class="btn btn-sm">Revive</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}
+    <p class="empty-state">No Pokémon in box yet.</p>
+    {{end}}
+  </section>
+
+  <!-- ═══ Encounter History ═════════════════════════════════════════════════ -->
+  {{if .Log}}
+  <section class="pokemon-section">
+    <h2>Encounter History</h2>
+    <div class="table-scroll">
+    <table class="route-table">
+      <thead>
+        <tr>
+          <th>Location</th>
+          <th>Pokémon</th>
+          <th>Outcome</th>
+          <th>Level</th>
+          {{if .NuzlockeOn}}<th></th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Log}}
+        <tr class="{{if .IsDuplicate}}row-duplicate{{end}}">
+          <td>{{.LocationName}}</td>
+          <td>{{.SpeciesName}}</td>
+          <td>{{.Outcome}}</td>
+          <td>{{if .Level}}{{.Level}}{{else}}—{{end}}</td>
+          {{if $.NuzlockeOn}}
+          <td>{{if .IsDuplicate}}<span class="badge-warning">Dup</span>{{end}}</td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{end}}
+
+</main>
+  <script id="encounters-data" type="application/json">{{.EncountersByLocation | toJSON}}</script>
+  <script src="/static/routes.js"></script>
+{{template "bottom-nav" .}}
+</body>
+</html>
+{{end}}

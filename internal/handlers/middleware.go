@@ -9,6 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ctxKeyDB is the Gin context key under which the *sql.DB is stored for
+// use by buildRunContext. All other handlers receive db as a closure parameter.
+const ctxKeyDB = "_db"
+
 // RunContext sets the "run", "progress", "active_rules", and "version" keys
 // in the Gin context for all routes under /runs/:run_id/*.
 func RunContextMiddleware(db *sql.DB) gin.HandlerFunc {
@@ -67,6 +71,7 @@ func RunContextMiddleware(db *sql.DB) gin.HandlerFunc {
 		c.Set("progress", progress)
 		c.Set("active_rules", activeRules)
 		c.Set("version", version)
+		c.Set(ctxKeyDB, db)
 
 		c.Next()
 	}
@@ -124,13 +129,23 @@ func buildRunContext(c *gin.Context) *RunContext {
 		pips[i] = i < prog.BadgeCount
 	}
 
+	var currentLoc string
+	if prog.CurrentLocationID != nil {
+		db, _ := c.Get(ctxKeyDB)
+		if db != nil {
+			db.(*sql.DB).QueryRow(`SELECT name FROM location WHERE id = ?`, *prog.CurrentLocationID).Scan(&currentLoc) //nolint:errcheck
+			currentLoc = humanizeLocationName(currentLoc)
+		}
+	}
+
 	return &RunContext{
-		ID:          run.ID,
-		Name:        run.Name,
-		VersionName: ver.Name,
-		BadgeCount:  prog.BadgeCount,
-		ActiveRules: enabledKeys,
-		BadgePips:   pips,
+		ID:              run.ID,
+		Name:            run.Name,
+		VersionName:     ver.Name,
+		BadgeCount:      prog.BadgeCount,
+		CurrentLocation: currentLoc,
+		ActiveRules:     enabledKeys,
+		BadgePips:       pips,
 	}
 }
 

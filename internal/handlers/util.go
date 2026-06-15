@@ -5,9 +5,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode"
 
-	"github.com/gin-gonic/gin"
 	"github.com/TravisPenn/professor-arbortom/internal/models"
+	"github.com/gin-gonic/gin"
 )
 
 // itoa is a convenience wrapper for int to string conversion.
@@ -89,4 +91,40 @@ func isRuleEnabled(rules []models.ActiveRule, key string) bool {
 		}
 	}
 	return false
+}
+
+// regionPrefixes lists PokeAPI region slugs that prefix location names.
+var regionPrefixes = []string{"kanto-", "hoenn-", "johto-", "sinnoh-", "unova-", "kalos-"}
+
+// humanizeLocationName converts a DB location name (slug or already-nice)
+// into a UI-friendly display name.
+//
+//	"kanto-route-4"   → "Route 4"
+//	"cerulean-city"    → "Cerulean City"
+//	"Pallet Town"      → "Pallet Town"  (static locations, already clean)
+func humanizeLocationName(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	// If it already contains a space and starts uppercase, it's a static
+	// location name — return as-is.
+	if strings.Contains(raw, " ") && len(raw) > 0 && unicode.IsUpper(rune(raw[0])) {
+		return raw
+	}
+	// Strip region prefix from PokeAPI slugs.
+	lower := strings.ToLower(raw)
+	for _, p := range regionPrefixes {
+		if strings.HasPrefix(lower, p) {
+			raw = raw[len(p):]
+			break
+		}
+	}
+	// Title-case each word, using "-" as separator.
+	words := strings.Split(raw, "-")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+		}
+	}
+	return strings.Join(words, " ")
 }

@@ -140,7 +140,7 @@ func UpdateProgress(db *sql.DB, pokeClient *pokeapi.Client) gin.HandlerFunc {
 			pokeClient.GoEnsureLocationEncounters(db, *locationID, run.VersionID)
 		}
 
-		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/progress")
+		c.Redirect(http.StatusFound, "/runs/"+itoa(run.ID)+"/overview")
 	}
 }
 

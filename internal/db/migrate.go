@@ -9,6 +9,30 @@ import (
 
 const currentVersion = 19
 
+// migrationFiles lists every migration SQL file in application order.
+// Adding a new migration requires only appending to this slice and bumping currentVersion.
+var migrationFiles = []string{
+	"001_initial.sql",
+	"002_starters.sql",
+	"003_merge_pokemon.sql",
+	"004_archive_run.sql",
+	"005_static_locations.sql",
+	"006_coach_improvements.sql",
+	"007_tm_moves.sql",
+	"008_hm_tutor_moves.sql",
+	"009_pokemon_types_stats.sql",
+	"010_current_moves.sql",
+	"011_static_encounters.sql",
+	"012_pokemon_acquisition.sql",
+	"013_merge_pokemon_tables.sql",
+	"014_merge_run_progress.sql",
+	"015_merge_run_settings.sql",
+	"016_drop_legacy_tables.sql",
+	"017_opponent_teams.sql",
+	"018_fix_run_pokemon_fk.sql",
+	"019_move_tooltip_fields.sql",
+}
+
 // Migrate checks PRAGMA user_version and applies pending migrations.
 // Safe to call on every startup.
 func Migrate(db *sql.DB) error {
@@ -21,179 +45,20 @@ func Migrate(db *sql.DB) error {
 		return nil // already up-to-date
 	}
 
-	if version == 0 {
-		if err := applyMigration(db, "001_initial.sql"); err != nil {
-			return fmt.Errorf("db: migration 001: %w", err)
+	for i, f := range migrationFiles {
+		target := i + 1
+		if version >= target {
+			continue
 		}
-		version = 1
-	}
-
-	if version == 1 {
-		if err := applyMigration(db, "002_starters.sql"); err != nil {
-			return fmt.Errorf("db: migration 002: %w", err)
-		}
-		version = 2
-	}
-
-	if version == 2 {
-		if err := applyMigration(db, "003_merge_pokemon.sql"); err != nil {
-			return fmt.Errorf("db: migration 003: %w", err)
-		}
-		version = 3
-	}
-
-	if version == 3 {
-		if err := applyMigration(db, "004_archive_run.sql"); err != nil {
-			return fmt.Errorf("db: migration 004: %w", err)
-		}
-		version = 4
-	}
-
-	if version == 4 {
-		if err := applyMigration(db, "005_static_locations.sql"); err != nil {
-			return fmt.Errorf("db: migration 005: %w", err)
-		}
-		version = 5
-	}
-
-	if version == 5 {
-		if err := applyMigration(db, "006_coach_improvements.sql"); err != nil {
-			return fmt.Errorf("db: migration 006: %w", err)
-		}
-		if err := setUserVersion(db, 6); err != nil {
+		if err := applyMigration(db, f); err != nil {
 			return err
 		}
-		version = 6
-	}
-
-	if version == 6 {
-		if err := applyMigration(db, "007_tm_moves.sql"); err != nil {
-			return fmt.Errorf("db: migration 007: %w", err)
-		}
-		if err := setUserVersion(db, 7); err != nil {
+		if err := setUserVersion(db, target); err != nil {
 			return err
 		}
-		version = 7
 	}
 
-	if version == 7 {
-		if err := applyMigration(db, "008_hm_tutor_moves.sql"); err != nil {
-			return fmt.Errorf("db: migration 008: %w", err)
-		}
-		if err := setUserVersion(db, 8); err != nil {
-			return err
-		}
-		version = 8
-	}
-
-	if version == 8 {
-		if err := applyMigration(db, "009_pokemon_types_stats.sql"); err != nil {
-			return fmt.Errorf("db: migration 009: %w", err)
-		}
-		if err := setUserVersion(db, 9); err != nil {
-			return err
-		}
-		version = 9
-	}
-
-	if version == 9 {
-		if err := applyMigration(db, "010_current_moves.sql"); err != nil {
-			return fmt.Errorf("db: migration 010: %w", err)
-		}
-		if err := setUserVersion(db, 10); err != nil {
-			return err
-		}
-		version = 10
-	}
-
-	if version == 10 {
-		if err := applyMigration(db, "011_static_encounters.sql"); err != nil {
-			return fmt.Errorf("db: migration 011: %w", err)
-		}
-		if err := setUserVersion(db, 11); err != nil {
-			return err
-		}
-		version = 11
-	}
-
-	if version == 11 {
-		if err := applyMigration(db, "012_pokemon_acquisition.sql"); err != nil {
-			return fmt.Errorf("db: migration 012: %w", err)
-		}
-		if err := setUserVersion(db, 12); err != nil {
-			return err
-		}
-		version = 12
-	}
-
-	if version == 12 {
-		if err := applyMigration(db, "013_merge_pokemon_tables.sql"); err != nil {
-			return fmt.Errorf("db: migration 013: %w", err)
-		}
-		if err := setUserVersion(db, 13); err != nil {
-			return err
-		}
-		version = 13
-	}
-
-	if version == 13 {
-		if err := applyMigration(db, "014_merge_run_progress.sql"); err != nil {
-			return fmt.Errorf("db: migration 014: %w", err)
-		}
-		if err := setUserVersion(db, 14); err != nil {
-			return err
-		}
-		version = 14
-	}
-
-	if version == 14 {
-		if err := applyMigration(db, "015_merge_run_settings.sql"); err != nil {
-			return fmt.Errorf("db: migration 015: %w", err)
-		}
-		if err := setUserVersion(db, 15); err != nil {
-			return err
-		}
-		version = 15
-	}
-
-	if version == 15 {
-		if err := applyMigration(db, "016_drop_legacy_tables.sql"); err != nil {
-			return fmt.Errorf("db: migration 016: %w", err)
-		}
-		if err := setUserVersion(db, 16); err != nil {
-			return err
-		}
-		version = 16
-	}
-
-	if version == 16 {
-		if err := applyMigration(db, "017_opponent_teams.sql"); err != nil {
-			return fmt.Errorf("db: migration 017: %w", err)
-		}
-		if err := setUserVersion(db, 17); err != nil {
-			return err
-		}
-		version = 17
-	}
-
-	if version == 17 {
-		if err := applyMigration(db, "018_fix_run_pokemon_fk.sql"); err != nil {
-			return fmt.Errorf("db: migration 018: %w", err)
-		}
-		if err := setUserVersion(db, 18); err != nil {
-			return err
-		}
-		version = 18
-	}
-
-	if version == 18 {
-		if err := applyMigration(db, "019_move_tooltip_fields.sql"); err != nil {
-			return fmt.Errorf("db: migration 019: %w", err)
-		}
-		return setUserVersion(db, 19)
-	}
-
-	return fmt.Errorf("db: unknown user_version %d", version)
+	return nil
 }
 
 func applyMigration(db *sql.DB, filename string) error {

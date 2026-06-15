@@ -9,6 +9,7 @@
   <h1>Your Runs</h1>
 
   {{if .Runs}}
+  <div class="table-scroll">
   <table class="run-table">
     <thead>
       <tr>
@@ -34,7 +35,7 @@
         </td>
         <td>{{.UpdatedAt}}</td>
         <td class="run-actions">
-          <a href="/runs/{{.ID}}/progress" class="btn btn-sm">Continue</a>
+          <a href="/runs/{{.ID}}/overview" class="btn btn-sm">Continue</a>
           <form method="POST" action="/runs/{{.ID}}/archive" class="form-inline">
             <button type="submit" class="btn btn-sm" title="Archive this run">Archive</button>
           </form>
@@ -43,6 +44,7 @@
       {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}
   <p class="empty-state">No active runs. Start one below.</p>
   {{end}}
@@ -50,6 +52,7 @@
   {{if .ArchivedRuns}}
   <details class="archived-runs">
     <summary>Archived runs ({{len .ArchivedRuns}})</summary>
+    <div class="table-scroll">
     <table class="run-table run-table-archived">
       <thead>
         <tr>
@@ -78,6 +81,7 @@
         {{end}}
       </tbody>
     </table>
+    </div>
   </details>
   {{end}}
 
@@ -113,6 +117,7 @@
   <script id="starters-data" type="application/json">{{.StartersByVersion | toJSON}}</script>
   <script src="/static/runs.js"></script>
 </main>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}

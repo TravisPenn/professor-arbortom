@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -26,6 +27,9 @@ import (
 
 // Version is injected at build time via -ldflags "-X main.Version=<sha>"
 var Version = "dev"
+
+// coachBoldRe is used by formatCoach to convert **bold** markers to <strong> tags.
+var coachBoldRe = regexp.MustCompile(`\*\*(.+?)\*\*`)
 
 func main() {
 	// Load .env (ignore error — env may be set by systemd EnvironmentFile)
@@ -142,6 +146,17 @@ func main() {
 		"lower": strings.ToLower,
 		"title": strings.Title, //nolint:staticcheck // acceptable for display
 		"join":  strings.Join,
+		// formatCoach safely renders LLM output: HTML-escape first, then
+		// convert newlines to <br> and **bold** to <strong>.
+		"formatCoach": func(s string) template.HTML {
+			// Step 1: HTML-escape the raw LLM text (prevents XSS)
+			safe := template.HTMLEscapeString(s)
+			// Step 2: convert **bold** markers to <strong> tags
+			safe = coachBoldRe.ReplaceAllString(safe, "<strong>$1</strong>")
+			// Step 3: convert newlines to <br>
+			safe = strings.ReplaceAll(safe, "\n", "<br>")
+			return template.HTML(safe) //nolint:gosec // XSS-safe: input is HTML-escaped before any tag insertion
+		},
 	}
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(poketemplates.FS, "*.html")
 	if err != nil {
@@ -188,12 +203,13 @@ func main() {
 		run := runs.Group("/:run_id", handlers.RunContextMiddleware(database))
 		{
 			run.GET("", handlers.ShowRun)
-			run.GET("/overview", handlers.ShowOverview(database, zc))
+			run.GET("/overview", handlers.ShowOverview(database, pokeClient, zc))
 			run.POST("/archive", handlers.ArchiveRun(database))
 			run.POST("/unarchive", handlers.UnarchiveRun(database))
 			run.GET("/progress", handlers.ShowProgress(database, pokeClient))
 			run.POST("/progress", handlers.UpdateProgress(database, pokeClient))
 			run.GET("/progress/hydration", handlers.HydrationStatus(database))
+			run.GET("/pokemon", handlers.ShowPokemon(database, pokeClient))
 			run.GET("/team", handlers.ShowTeam(database))
 			run.GET("/team/:slot", handlers.ShowTeamSlot(database))
 			run.POST("/team", handlers.UpdateTeam(database))
@@ -206,6 +222,7 @@ func main() {
 			run.GET("/rules", handlers.ShowRules(database))
 			run.POST("/rules", handlers.UpdateRules(database))
 			run.GET("/coach", handlers.ShowCoach(database, pokeClient, zc))
+			run.GET("/coach/recommendation", handlers.GetRecommendation(database, pokeClient, zc))
 			run.POST("/coach", handlers.QueryCoach(database, pokeClient, zc))
 		}
 	}

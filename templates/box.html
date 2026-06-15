@@ -18,12 +18,14 @@
   </div>
 
   {{if .Entries}}
+  <div class="table-scroll">
   <table class="box-table">
     <thead>
       <tr>
         <th>Pokémon</th>
         <th>Form</th>
         <th>Level</th>
+        <th>Moves</th>
         <th>Met At</th>
         <th>Obtained</th>
         <th>Status</th>
@@ -36,6 +38,7 @@
         <td>{{.SpeciesName}}</td>
         <td>{{if ne .FormName "default"}}{{.FormName}}{{else}}—{{end}}</td>
         <td>{{.Level}}{{if .CaughtLevel}}{{if ne (deref .CaughtLevel) .Level}} <span class="muted">(caught Lv {{deref .CaughtLevel}})</span>{{end}}{{end}}</td>
+        <td class="team-move-list">{{range .Moves}}<span class="move-chip">{{.}}</span>{{end}}</td>
         <td>{{if .MetLocation}}{{.MetLocation}}{{else}}—{{end}}</td>
         <td>
           {{if eq .AcquisitionType "starter"}}<span class="badge-info">Starter</span>
@@ -82,10 +85,12 @@
       {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}
   <p class="empty-state">No Pokémon in box yet.</p>
   {{end}}
 </main>
+{{template "bottom-nav" .}}
 </body>
 </html>
 {{end}}
